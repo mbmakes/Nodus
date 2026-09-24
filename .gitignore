@@ -1,0 +1,9 @@
+.env
+allowed_workspace/*
+!allowed_workspace/.gitkeep
+nodus_memory.db
+__pycache__/
+*.pyc
+venv/
+env/
+.vscode/
