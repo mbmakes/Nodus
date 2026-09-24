@@ -10,17 +10,12 @@ from memory_manager import NodusMemory
 class NodusAgent:
     def __init__(self, api_key: str, gemini_api_key: str = None):
         self.api_key = api_key
-        self.gemini_api_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
+        raw_gemini = gemini_api_key or os.getenv("GEMINI_API_KEY") or ""
+        self.gemini_api_key = raw_gemini.strip().strip('"').strip("'")
+        
         self.tools = NodusTools()
         self.memory = NodusMemory()
         self.api_url = "https://openrouter.ai/api/v1/chat/completions"
-        self.gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={self.gemini_api_key}"
-
-        self.fallback_pool = [
-            "deepseek/deepseek-r1:free",
-            "meta-llama/llama-3.3-70b-instruct:free",
-            "meta-llama/llama-3.1-8b-instruct:free"
-        ]
 
     def _build_system_prompt(self) -> str:
         facts = self.memory.get_facts()
@@ -38,6 +33,8 @@ KULLANABILECEGIN ARACLAR:
 3. list_files: Calisma alanindaki dosyalari listeler. Parametreler: {{}}
 4. execute_code: Calisma alaninda Python kodu calistirir. Parametreler: {{"code": "python_kodu"}}
 5. solve_math: SymPy ile sembolik matematik cozer. Parametreler: {{"expression": "ifade", "variable": "degisken", "task": "solve/diff/integrate"}}
+6. apply_patch: Dosyanin tamamini silmeden yalnizca belirli kod blogunu degistirir. Parametreler: {{"filename": "ad.py", "search_block": "aranan_orijinal_kod", "replace_block": "yeni_kod"}}
+7. search_codebase: Calisma alanindaki dosyalarda fonksiyon veya kelime arar. Parametreler: {{"query": "aranan_kelime"}}
 
 KURALLAR:
 - Kullanici bir dosya yazmani, kod calistirmani veya denklem cozmeni istediginde tek basina duz metin yazma; eylemini planla.
@@ -51,10 +48,35 @@ EYLEM_DETAYI:
 }}
 """
 
-    def transcribe_engineering_image(self, image_bytes: bytes, mime_type: str = "image/png") -> str:
-        """Gorseli Gemini Vision ile analiz edip eksiksiz yapilandirilmis teknik metne donusturur."""
+    def _get_candidate_gemini_models(self) -> list:
+        priority_models = [
+            "gemini-3.6-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-2.5-flash"
+        ]
+        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={self.gemini_api_key}"
+        try:
+            res = requests.get(url, timeout=10)
+            if res.status_code == 200:
+                models = res.json().get("models", [])
+                valid = [
+                    m["name"].replace("models/", "") for m in models
+                    if "generateContent" in m.get("supportedGenerationMethods", [])
+                    and "gemini" in m.get("name", "").lower()
+                    and "embedding" not in m.get("name", "").lower()
+                ]
+                for m in valid:
+                    if m not in priority_models:
+                        priority_models.append(m)
+        except Exception:
+            pass
+        return priority_models
+
+    def transcribe_engineering_image(self, image_bytes: bytes, mime_type: str = "image/png") -> tuple:
+        """Gorseli Gemini Vision ile analiz eder. Dondurur: (Basari: bool, Mesaj/Döküm: str)"""
         if not self.gemini_api_key:
-            return "HATA: GEMINI_API_KEY tanimli degil. Lutfen .env dosyasina ekleyin."
+            return False, "GEMINI_API_KEY tanimli degil. Lutfen .env dosyasina ekleyin."
 
         b64_data = base64.b64encode(image_bytes).decode("utf-8")
         prompt = (
@@ -64,7 +86,7 @@ EYLEM_DETAYI:
             "1. Soru metni ve istenen tum maddeler (a, b, c vb.).\n"
             "2. Geometri, dugum noktalari (A, B, C...), mesafeler/olculer ve mesnet turleri (sabit pim, kayar mesnet, ankastre vb.).\n"
             "3. Uygulanan tum yukler (degerleri, yonleri, acilari ve hangi dugume uygulandiklari).\n"
-            "NOT: Hesaplama veya cozum yapma. Sadece gordugun teknik verileri eksiksiz ve yapilandirilmis bir liste halinde dök."
+            "NOT: Cozum veya hesaplama yapma. Yalnizca gordugun tum verileri eksiksiz bir teknik dokum olarak listele."
         )
 
         payload = {
@@ -81,48 +103,120 @@ EYLEM_DETAYI:
             }]
         }
 
-        try:
-            resp = requests.post(self.gemini_url, json=payload, timeout=30)
-            if resp.status_code == 200:
-                data = resp.json()
-                return data["candidates"][0]["content"]["parts"][0]["text"]
-            return f"Gemini Vision Baglanti Hatasi (Kod {resp.status_code}): {resp.text}"
-        except Exception as e:
-            return f"Gemini Vision Hatasi: {str(e)}"
+        candidates = self._get_candidate_gemini_models()
+        last_error = ""
 
-    def select_best_model(self, prompt_text: str, available_models: list) -> str:
-        """Gorevin agirligina gore OpenRouter uzerindeki en guclu modeli secer."""
-        if not available_models:
-            return "meta-llama/llama-3.3-70b-instruct:free"
+        for model_slug in candidates:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_slug}:generateContent?key={self.gemini_api_key}"
+            try:
+                resp = requests.post(url, json=payload, timeout=35)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    text = data["candidates"][0]["content"]["parts"][0]["text"]
+                    return True, text
+                last_error = f"Model {model_slug} (Kod {resp.status_code})"
+                continue
+            except Exception as e:
+                last_error = f"Model {model_slug} hatasi: {str(e)}"
+                continue
 
-        prompt_lower = str(prompt_text).lower()
-        heavy_engineering_triggers = [
-            "kafes", "truss", "mesnet", "statik", "mukavemet", "akiskan", 
-            "termodinamik", "diferansiyel", "gerilme", "stress", "tork", "sehim", 
-            "atalet", "moment", "integral", "matris", "eigen", "simulasyon", "sonlu eleman"
+        return False, f"Gemini Vision modellerinden yanit alinamadi. Son durum: {last_error}"
+
+    def assess_complexity(self, prompt_text: str) -> tuple:
+        """Girdinin teknik agirligini analiz eder."""
+        score = 0
+        reasons = []
+        text_lower = str(prompt_text).lower()
+
+        # 1. Kriter: Gorsel veya sayisallastirilmis sema var mi?
+        if "teknik dokumu (perception)" in text_lower or "inline_data" in text_lower:
+            score += 4
+            reasons.append("Teknik Cizim/Diyagram")
+
+        # 2. Kriter: Agir muhendislik ve fizik anahtar kelimeleri
+        heavy_engineering = [
+            "kafes", "truss", "mesnet", "statik", "mukavemet", "gerilme", "stress", 
+            "sehim", "burulma", "atalet", "moment", "serbest cisim", "kesit metodu", "dugum metodu",
+            "akiskan", "navier-stokes", "bernoulli", "reynolds", "sinir tabaka",
+            "termodinamik", "entropi", "entalpi", "carnot", "rankine",
+            "diferansiyel", "laplace", "fourier", "matris", "ozdeger", "eigen", 
+            "sonlu eleman", "ansys", "fluent", "simulasyon"
         ]
-        is_heavy_task = any(kw in prompt_lower for kw in heavy_engineering_triggers)
+        matched_eng = [kw for kw in heavy_engineering if kw in text_lower]
+        if matched_eng:
+            eng_weight = min(len(matched_eng) * 2, 4)
+            score += eng_weight
+            reasons.append(f"Mühendislik Kavramları ({', '.join(matched_eng[:2])})")
 
-        if is_heavy_task:
-            for heavy_slug in ["deepseek-r1", "llama-3.3-70b"]:
+        # 3. Kriter: Sayisal yogunluk ve birimler
+        math_patterns = [r"\b\d+\.?\d*\s*(?:kn|n|kpa|mpa|gpa|mm|m/s|rad/s)\b", r"[\^_\{\}\\]", r"[=<>]=?"]
+        math_matches = sum(len(re.findall(p, text_lower)) for p in math_patterns)
+        if math_matches >= 3:
+            score += 2
+            reasons.append("Birim/Sayısal Yoğunluk")
+
+        # 4. Kriter: Cok adimli analiz talebi
+        reasoning_prompts = ["adim adim", "ayrintili", "ispatla", "analiz et", "cozumunu yap", "hesapla"]
+        if any(rp in text_lower for rp in reasoning_prompts):
+            score += 1
+            reasons.append("Adım Adım Hesaplama")
+
+        is_heavy = score >= 3
+        return is_heavy, score, reasons
+
+    def select_best_model(self, prompt_text: str, available_models: list) -> tuple:
+        """Gorevin zorluk seviyesine gore en stabil modeli dinamik olarak secer."""
+        if not available_models:
+            return "meta-llama/llama-3.3-70b-instruct:free", "Model listesi bos, varsayilan atandi."
+
+        is_heavy, score, reasons = self.assess_complexity(prompt_text)
+
+        # Agir ve kararlı modeller (Oncelik sirali)
+        tier1_heavy = [
+            "llama-3.3-70b",
+            "deepseek-r1",
+            "qwen-2.5-72b"
+        ]
+
+        # Hizli modeller
+        tier2_fast = [
+            "llama-3.1-8b",
+            "qwen",
+            "mistral"
+        ]
+
+        # Kesinlikle secilmeyecek hafif veya kuyrukta kilitlenen modeller
+        banned = ["mini", "1b", "3b", "lite", "nex", "small", "guard", "moderation", "lightning"]
+        selected = None
+
+        if is_heavy:
+            for heavy_slug in tier1_heavy:
                 for m in available_models:
-                    if heavy_slug in m.lower():
-                        return m
+                    m_low = m.lower()
+                    if heavy_slug in m_low and not any(b in m_low for b in banned):
+                        selected = m
+                        break
+                if selected:
+                    break
+            report = f"Ağır Problem (Skor {score}/10: {', '.join(reasons)}) -> Yüksek Muhakeme Modeli"
+        else:
+            for fast_slug in tier2_fast:
+                for m in available_models:
+                    m_low = m.lower()
+                    if fast_slug in m_low and not any(b in m_low for b in banned):
+                        selected = m
+                        break
+                if selected:
+                    break
+            report = f"Standart Görev (Skor {score}/10) -> Hızlı Model"
 
-        for coder_slug in ["deepseek-r1", "llama-3.3-70b", "coder"]:
-            for m in available_models:
-                if coder_slug in m.lower() and not any(w in m.lower() for w in ["mini", "1b", "3b", "lite"]):
-                    return m
+        if not selected:
+            clean_pool = [m for m in available_models if not any(b in m.lower() for b in banned)]
+            selected = clean_pool[0] if clean_pool else available_models[0]
 
-        for general_slug in ["llama-3.3-70b", "instruct"]:
-            for m in available_models:
-                if general_slug in m.lower() and not any(w in m.lower() for w in ["mini", "1b", "3b"]):
-                    return m
-
-        return available_models[0]
+        return selected, report
 
     def call_model(self, model_name: str, prompt_content: str, history: list, available_models: list = None) -> str:
-        """OpenRouter API cagirisi yapar."""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -134,14 +228,16 @@ EYLEM_DETAYI:
         messages.extend(history)
 
         pool = available_models or []
-        text_candidates = [m for m in pool if not any(w in m.lower() for w in ["mini", "1b", "3b", "guard", "moderation"])]
-        models_to_try = [model_name] + [m for m in text_candidates if m != model_name]
-
-        if not models_to_try:
-            models_to_try = [model_name]
+        banned = ["mini", "1b", "3b", "guard", "moderation", "nex", "lightning"]
+        text_candidates = [m for m in pool if not any(w in m.lower() for w in banned)]
+        
+        # En fazla secilen model + 1 yedek dene (toplam max 2 model, kilitlenmeyi onler)
+        models_to_try = [model_name]
+        for m in text_candidates:
+            if m != model_name and len(models_to_try) < 2:
+                models_to_try.append(m)
 
         last_error = "Bilinmeyen hata olustu."
-
         for target_model in models_to_try:
             payload = {
                 "model": target_model,
@@ -149,13 +245,12 @@ EYLEM_DETAYI:
                 "temperature": 0.1
             }
             try:
-                response = requests.post(self.api_url, headers=headers, json=payload, timeout=50)
+                # Baglanti: 10s, Yanit: 35s zaman asimi
+                response = requests.post(self.api_url, headers=headers, json=payload, timeout=(10, 35))
                 if response.status_code == 200:
                     return response.json()["choices"][0]["message"]["content"]
-                
                 last_error = f"Model {target_model} yanit vermedi (Kod {response.status_code})"
                 continue
-
             except requests.exceptions.Timeout:
                 last_error = f"Model {target_model} zaman asimina ugradi (Timeout)"
                 continue
@@ -163,10 +258,9 @@ EYLEM_DETAYI:
                 last_error = f"Baglanti hatasi ({target_model}): {str(e)}"
                 continue
 
-        return f"⚠️ Secilen ve yedek modellerden yanit alinamadi. Son durum: {last_error}"
+        return f"⚠️ Modellerden yanit alinamadi. Son durum: {last_error}"
 
     def parse_action(self, response_text: str):
-        """Model ciktisindan eylem detayini yakalar."""
         try:
             if "EYLEM_DETAYI:" in response_text:
                 json_part = response_text.split("EYLEM_DETAYI:")[1].strip()
@@ -186,7 +280,6 @@ EYLEM_DETAYI:
         return None
 
     def execute_approved_action(self, action_info: dict) -> dict:
-        """Kullanicinin onayladigi eylemi yurutur."""
         action = action_info.get("action")
         params = action_info.get("params", {})
 
@@ -204,5 +297,13 @@ EYLEM_DETAYI:
                 params.get("variable", "x"),
                 params.get("task", "solve")
             )
+        elif action == "apply_patch":
+            return self.tools.apply_patch(
+                params.get("filename"),
+                params.get("search_block"),
+                params.get("replace_block")
+            )
+        elif action == "search_codebase":
+            return self.tools.search_codebase(params.get("query"))
         else:
             return {"error": f"Bilinmeyen eylem turu: {action}"}

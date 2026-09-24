@@ -8,11 +8,11 @@ import requests
 import streamlit as st
 from dotenv import load_dotenv
 
+load_dotenv(override=True)
+
 from agent_core import NodusAgent
 from memory_manager import NodusMemory
 from tools import NodusTools
-
-load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -51,6 +51,7 @@ def get_available_free_models():
                 and "gemini-2.0-flash-exp" not in m.get("id", "").lower()
                 and "qwen-2.5-coder-32b" not in m.get("id", "").lower()
                 and "mistral-small-24b" not in m.get("id", "").lower()
+                and "nex" not in m.get("id", "").lower()
             ]
             if free_models:
                 return free_models
@@ -73,10 +74,10 @@ def is_safe_action(action_info: dict) -> tuple:
     action = action_info.get("action", "")
     params = action_info.get("params", {})
 
-    if action in ["read_file", "list_files", "solve_math"]:
+    if action in ["read_file", "list_files", "solve_math", "search_codebase"]:
         return True, ""
 
-    if action == "write_file":
+    if action in ["write_file", "apply_patch"]:
         fname = params.get("filename", "").lower()
         critical_files = ["app.py", "agent_core.py", "tools.py", "memory_manager.py", ".env", "requirements.txt"]
         if any(fname.endswith(cf) for cf in critical_files):
@@ -143,6 +144,10 @@ def execute_with_healing(action_info: dict, active_model: str, fetched_models: l
     log_prefix = "\n".join(repair_logs) + "\n\n" if repair_logs else ""
     if action_type == "write_file":
         out_text = f"✅ `{params.get('filename')}` dosyasi calisma alanina kaydedildi."
+    elif action_type == "apply_patch":
+        out_text = f"✅ `{params.get('filename')}` cerrahi yontemle (patch) guncellendi."
+    elif action_type == "search_codebase":
+        out_text = f"🔍 **Arama Sonuclari:**\n```json\n{result.get('matches', {})}\n```"
     elif action_type == "solve_math":
         out_text = f"✅ **Analitik Cozum:** `{result.get('result', '')}`"
     elif action_type == "execute_code":
@@ -160,14 +165,10 @@ def execute_with_healing(action_info: dict, active_model: str, fetched_models: l
 # --- SOL KONTROL PANELI ---
 with st.sidebar:
     st.title("⚙️ Nodus Kontrol")
-    if OPENROUTER_API_KEY:
-        st.success("OpenRouter Baglantisi Aktif")
-    else:
+    
+    if not OPENROUTER_API_KEY:
         st.error("OpenRouter Anahtari Bulunamadi (.env)")
-
-    if GEMINI_API_KEY:
-        st.success("Gemini Vision (Göz) Aktif")
-    else:
+    if not GEMINI_API_KEY:
         st.warning("GEMINI_API_KEY eklenmedi (.env)")
 
     dev_mode = st.toggle("🛠️ Gelistirici Modu", value=False)
@@ -175,7 +176,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("Model Secimi")
     fetched_models = get_available_free_models()
-    model_options = ["🤖 Otomatik (Akilli Yonlendirme)"] + fetched_models
+    model_options = ["🤖 Otomatik (Dinamik Puanlama)"] + fetched_models
     selected_model_option = st.selectbox("Aktif Model:", model_options)
 
     st.markdown("---")
@@ -224,7 +225,6 @@ with st.sidebar:
 st.title("Nodus Engine")
 st.caption("Otonom Muhendislik ve Karar Destek Platformu")
 
-# Mesaj Gecmisi
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
@@ -235,7 +235,6 @@ for msg in st.session_state.messages:
                 if os.path.exists(img_path):
                     st.image(img_path, caption=os.path.basename(img_path), use_container_width=True)
 
-# --- SADECE KRITIK / RISKLI EYLEMLER ICIN INSAN ONAYI (HITL) ---
 if st.session_state.pending_action:
     action_info = st.session_state.pending_action
     risk_reason = action_info.get("_risk_reason", "Kritik islem tespiti.")
@@ -249,7 +248,7 @@ if st.session_state.pending_action:
     col_app, col_rej = st.columns([1, 4])
     if col_app.button("⚠️ Riski Biliyorum, Onayla", type="primary"):
         with st.spinner("Kritik islem yurutuluyor..."):
-            active_m = selected_model_option if not selected_model_option.startswith("🤖") else "deepseek/deepseek-r1:free"
+            active_m = selected_model_option if not selected_model_option.startswith("🤖") else "meta-llama/llama-3.3-70b-instruct:free"
             res_text, imgs = execute_with_healing(action_info, active_m, fetched_models)
             st.session_state.pending_action = None
             msg_payload = {"role": "assistant", "content": res_text, "images": imgs}
@@ -264,7 +263,6 @@ if st.session_state.pending_action:
         memory.save_chat_turn("[Kritik Eylem Reddedildi]", cancel_text)
         st.rerun()
 
-# --- GEMINI TARZI CHAT GIRDISI (SOLDA ARTI + DOGRUDAN SS / DOSYA EKLEME) ---
 chat_input_params = inspect.signature(st.chat_input).parameters
 
 if "accept_file" in chat_input_params:
@@ -294,14 +292,16 @@ if chat_prompt:
             uploaded_files = [st.session_state["legacy_file_upload"]]
 
     if not user_prompt and uploaded_files:
-        user_prompt = "Gonderilen gorseli/diyagrami analiz et ve gerekli muhendislik cozumunu Python ile hesapla."
+        user_prompt = "Gonderilen gorseli analiz et, tum olculeri cikar ve adim adim Python ile coz."
 
     if user_prompt or uploaded_files:
         has_image = bool(uploaded_files)
         base64_img = None
         final_prompt_for_agent = user_prompt
 
-        # Eger gorsel varsa: Once Gemini Vision ile oku
+        perception_success = True
+        perception_error_msg = ""
+
         if has_image:
             img_file = uploaded_files[0]
             img_bytes = img_file.read()
@@ -309,32 +309,48 @@ if chat_prompt:
             mime = getattr(img_file, "type", "image/png") or "image/png"
 
             with st.spinner("Gemini teknik cizimi sayisallastiriyor..."):
-                diagram_description = agent.transcribe_engineering_image(img_bytes, mime)
-
-            final_prompt_for_agent = (
-                f"{user_prompt}\n\n"
-                f"--- [YUKLENEN GORSELIN VE DIYAGRAMIN TEKNIK DOKUMU (PERCEPTION)] ---\n"
-                f"{diagram_description}\n"
-                f"------------------------------------------------------------------"
-            )
-
-        if selected_model_option.startswith("🤖"):
-            active_model = agent.select_best_model(final_prompt_for_agent, fetched_models)
-        else:
-            active_model = selected_model_option
+                ok, res_text = agent.transcribe_engineering_image(img_bytes, mime)
+                if ok:
+                    final_prompt_for_agent = (
+                        f"{user_prompt}\n\n"
+                        f"--- [YUKLENEN GORSELIN VE DIYAGRAMIN TEKNIK DOKUMU (PERCEPTION)] ---\n"
+                        f"{res_text}\n"
+                        f"------------------------------------------------------------------"
+                    )
+                else:
+                    perception_success = False
+                    perception_error_msg = res_text
 
         st.session_state.messages.append({
             "role": "user",
             "content": user_prompt,
             "user_image": base64_img
         })
-        with st.chat_message("user"):
-            st.markdown(user_prompt)
-            if base64_img:
-                st.image(f"data:image/png;base64,{base64_img}", width=400)
+
+        if not perception_success:
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": f"⚠️ **Görsel Algılama Başarısız:**\n{perception_error_msg}"
+            })
+            st.rerun()
+
+        # Dinamik zorluk analizi ve model yonlendirmesi
+        if selected_model_option.startswith("🤖"):
+            routing_res = agent.select_best_model(final_prompt_for_agent, fetched_models)
+            if isinstance(routing_res, tuple) and len(routing_res) == 2:
+                active_model, routing_report = routing_res
+            else:
+                active_model = routing_res
+                routing_report = "Dinamik Yönlendirme"
+            
+            model_display = active_model.split('/')[1] if '/' in str(active_model) else str(active_model)
+            
+        else:
+            active_model = selected_model_option
 
         with st.chat_message("assistant"):
-            with st.spinner(f"Nodus analiz edip cozum uretiyor ({active_model.split('/')[1] if '/' in active_model else active_model})..."):
+            model_name_tag = active_model.split('/')[1] if '/' in active_model else active_model
+            with st.spinner(f"Nodus analiz edip cozum uretiyor ({model_name_tag})..."):
                 api_history = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages[:-1]]
                 api_history.append({"role": "user", "content": final_prompt_for_agent})
 
@@ -346,11 +362,9 @@ if chat_prompt:
 
                 if action:
                     is_safe, reason = is_safe_action(action)
-                    
                     if is_safe:
                         if user_explanation:
                             st.markdown(user_explanation)
-                        
                         with st.spinner("Otonom icra ediliyor..."):
                             res_text, imgs = execute_with_healing(action, active_model, fetched_models)
                             combined_reply = f"{user_explanation}\n\n{res_text}" if user_explanation else res_text
