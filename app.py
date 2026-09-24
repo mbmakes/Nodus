@@ -27,10 +27,24 @@ memory = NodusMemory()
 agent = NodusAgent(api_key=OPENROUTER_API_KEY, gemini_api_key=GEMINI_API_KEY)
 tools = NodusTools()
 
+# EKRAN HER ACILISTA TEMIZ BASLASIN
 if "messages" not in st.session_state:
-    st.session_state.messages = memory.get_recent_messages()
+    st.session_state.messages = []
+
 if "pending_action" not in st.session_state:
     st.session_state.pending_action = None
+
+def clean_display_text(text: str) -> str:
+    """Modelin arkada urettigi XML, JSON veya teknik etiketleri kullanici icin temizler."""
+    if not text:
+        return ""
+    text = re.sub(r'<tool_call>[\s\S]*?</tool_call>', '', text)
+    text = re.sub(r'<arg_key>[\s\S]*?</arg_key>', '', text)
+    text = re.sub(r'<arg_value>[\s\S]*?</arg_value>', '', text)
+    text = text.split("EYLEM_DETAYI:")[0]
+    text = re.sub(r'\{[\s\r\n]*"action"[\s\r\n]*:[\s\S]*?\}', '', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
 
 @st.cache_data(ttl=600)
 def get_available_free_models():
@@ -52,6 +66,7 @@ def get_available_free_models():
                 and "qwen-2.5-coder-32b" not in m.get("id", "").lower()
                 and "mistral-small-24b" not in m.get("id", "").lower()
                 and "nex" not in m.get("id", "").lower()
+                and "nemotron" not in m.get("id", "").lower()
             ]
             if free_models:
                 return free_models
@@ -125,7 +140,7 @@ def execute_with_healing(action_info: dict, active_model: str, fetched_models: l
         heal_action = agent.parse_action(heal_resp)
 
         if heal_action and heal_action.get("action") == "execute_code":
-            repair_logs.append(f"⚠️ **Onarim #{healing_attempts}:** `{stderr_msg}` hatasi giderildi.")
+            repair_logs.append(f"⚠️ **Onarim #{healing_attempts}:** Hata duzeltildi.")
             action_info = heal_action
             params = heal_action.get("params", {})
             result = agent.execute_approved_action(heal_action)
@@ -142,23 +157,42 @@ def execute_with_healing(action_info: dict, active_model: str, fetched_models: l
                     generated_images.append(full_img_path)
 
     log_prefix = "\n".join(repair_logs) + "\n\n" if repair_logs else ""
+    
     if action_type == "write_file":
-        out_text = f"✅ `{params.get('filename')}` dosyasi calisma alanina kaydedildi."
+        out_text = f"✅ **`{params.get('filename')}`** dosyası kaydedildi."
     elif action_type == "apply_patch":
-        out_text = f"✅ `{params.get('filename')}` cerrahi yontemle (patch) guncellendi."
+        out_text = f"✅ **`{params.get('filename')}`** dosyası güncellendi."
+    elif action_type == "read_file":
+        fname = params.get('filename')
+        if result.get("success"):
+            out_text = f"📄 **`{fname}` dosyası içeriği:**\n```python\n{result.get('content', '')}\n```"
+        else:
+            out_text = f"❌ `{fname}` dosyası okunamadı."
+    elif action_type == "list_files":
+        files = result.get("files", [])
+        if files:
+            file_list = "\n".join([f"- `{f}`" for f in files])
+            out_text = f"📂 **Çalışma Alanındaki Dosyalar:**\n{file_list}"
+        else:
+            out_text = "📂 Çalışma alanında henüz dosya yok."
     elif action_type == "search_codebase":
-        out_text = f"🔍 **Arama Sonuclari:**\n```json\n{result.get('matches', {})}\n```"
+        matches = result.get("matches", {})
+        if isinstance(matches, dict) and matches:
+            formatted = "\n".join([f"**{f}**:\n" + "\n".join([f"  - {line}" for line in lines]) for f, lines in matches.items()])
+            out_text = f"🔍 **Arama Sonuçları:**\n{formatted}"
+        else:
+            out_text = "🔍 Aranan ifade dosyalarda bulunamadı."
     elif action_type == "solve_math":
-        out_text = f"✅ **Analitik Cozum:** `{result.get('result', '')}`"
+        out_text = f"✅ **Analitik Çözüm:** `{result.get('result', '')}`"
     elif action_type == "execute_code":
         stdout = result.get("stdout", "").strip()
         stderr = result.get("stderr", "").strip()
         if result.get("success"):
-            out_text = f"{log_prefix}⚙️ **Calistirma Basarili:**\n```\n{stdout if stdout else 'Kod hatasiz yurutuldu.'}\n```"
+            out_text = f"{log_prefix}⚙️ **Çalıştırma Başarılı:**\n```\n{stdout if stdout else 'Kod hatasız yürütüldü.'}\n```"
         else:
-            out_text = f"{log_prefix}❌ **Hata (Onarilamadi):**\n```\n{stderr}\n```"
+            out_text = f"{log_prefix}❌ **Hata:**\n```\n{stderr}\n```"
     else:
-        out_text = f"Eylem tamamlandi: {result}"
+        out_text = "✅ İşlem tamamlandı."
 
     return out_text, generated_images
 
@@ -227,7 +261,9 @@ st.caption("Otonom Muhendislik ve Karar Destek Platformu")
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+        clean_content = clean_display_text(msg.get("content", ""))
+        if clean_content:
+            st.markdown(clean_content)
         if msg.get("user_image"):
             st.image(f"data:image/png;base64,{msg['user_image']}", width=400)
         if "images" in msg and msg["images"]:
@@ -321,6 +357,11 @@ if chat_prompt:
                     perception_success = False
                     perception_error_msg = res_text
 
+        with st.chat_message("user"):
+            st.markdown(user_prompt)
+            if base64_img:
+                st.image(f"data:image/png;base64,{base64_img}", width=400)
+
         st.session_state.messages.append({
             "role": "user",
             "content": user_prompt,
@@ -328,44 +369,37 @@ if chat_prompt:
         })
 
         if not perception_success:
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": f"⚠️ **Görsel Algılama Başarısız:**\n{perception_error_msg}"
-            })
+            err_box = f"⚠️ **Görsel Algılama Başarısız:**\n{perception_error_msg}"
+            with st.chat_message("assistant"):
+                st.markdown(err_box)
+            st.session_state.messages.append({"role": "assistant", "content": err_box})
             st.rerun()
 
-        # Dinamik zorluk analizi ve model yonlendirmesi
         if selected_model_option.startswith("🤖"):
             routing_res = agent.select_best_model(final_prompt_for_agent, fetched_models)
-            if isinstance(routing_res, tuple) and len(routing_res) == 2:
-                active_model, routing_report = routing_res
-            else:
-                active_model = routing_res
-                routing_report = "Dinamik Yönlendirme"
-            
-            model_display = active_model.split('/')[1] if '/' in str(active_model) else str(active_model)
-            
+            active_model = routing_res[0] if isinstance(routing_res, tuple) else routing_res
         else:
             active_model = selected_model_option
 
         with st.chat_message("assistant"):
-            model_name_tag = active_model.split('/')[1] if '/' in active_model else active_model
-            with st.spinner(f"Nodus analiz edip cozum uretiyor ({model_name_tag})..."):
-                api_history = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages[:-1]]
+            model_tag = active_model.split('/')[1] if '/' in active_model else active_model
+            with st.spinner(f"Nodus düşünüyor ({model_tag})..."):
+                # Ekranda gorunmese dahi kalici hafizayi modele aktar
+                past_context = memory.get_recent_messages()
+                api_history = [{"role": m["role"], "content": m["content"]} for m in past_context[-10:]]
                 api_history.append({"role": "user", "content": final_prompt_for_agent})
 
                 response = agent.call_model(active_model, final_prompt_for_agent, api_history, fetched_models)
                 action = agent.parse_action(response)
 
-                user_explanation = response.split("EYLEM_DETAYI:")[0].strip()
-                user_explanation = re.sub(r'\{[\s\r\n]*"action"[\s\r\n]*:[\s\S]*\}', '', user_explanation).strip()
+                user_explanation = clean_display_text(response)
 
                 if action:
                     is_safe, reason = is_safe_action(action)
                     if is_safe:
                         if user_explanation:
                             st.markdown(user_explanation)
-                        with st.spinner("Otonom icra ediliyor..."):
+                        with st.spinner("İşlem yürütülüyor..."):
                             res_text, imgs = execute_with_healing(action, active_model, fetched_models)
                             combined_reply = f"{user_explanation}\n\n{res_text}" if user_explanation else res_text
                             st.markdown(res_text)
@@ -382,6 +416,9 @@ if chat_prompt:
                         st.session_state.pending_action = action
                         st.rerun()
                 else:
-                    st.markdown(response)
-                    st.session_state.messages.append({"role": "assistant", "content": response})
-                    memory.save_chat_turn(user_prompt, response)
+                    if user_explanation:
+                        st.markdown(user_explanation)
+                    else:
+                        st.markdown(response)
+                    st.session_state.messages.append({"role": "assistant", "content": user_explanation or response})
+                    memory.save_chat_turn(user_prompt, user_explanation or response)
