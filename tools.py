@@ -1,118 +1,144 @@
 # -*- coding: utf-8 -*-
 import os
+import re
 import sys
 import subprocess
 import sympy as sp
-from typing import Dict, Any, List
-from path_guard import PathGuard
-
-guard = PathGuard()
 
 class NodusTools:
-    """Nodus platformunun guvenli arac seti:
-    - Guvenli Dosya Okuma/Yazma/Listeleme
-    - Python Kodu Calistirma (Subprocess Sandbox)
-    - Sembolik Matematik Motoru (SymPy)
-    """
+    def __init__(self, workspace_dir="allowed_workspace"):
+        self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.workspace_dir = os.path.join(self.base_dir, workspace_dir)
+        os.makedirs(self.workspace_dir, exist_ok=True)
 
-    # --- DOSYA YONETIMI ---
-    @staticmethod
-    def write_file(filename: str, content: str) -> Dict[str, Any]:
-        """allowed_workspace icine guvenli dosya yazar."""
+    def _resolve_safe_path(self, filename: str) -> str:
+        safe_name = os.path.basename(filename)
+        return os.path.join(self.workspace_dir, safe_name)
+
+    def write_file(self, filename: str, content: str) -> dict:
+        """Calisma alanina sifirdan dosya yazar."""
+        target_path = self._resolve_safe_path(filename)
         try:
-            full_path = guard.get_safe_path(filename)
-            with open(full_path, "w", encoding="utf-8") as f:
+            with open(target_path, "w", encoding="utf-8") as f:
                 f.write(content)
-            return {"success": True, "message": f"'{filename}' basariyla kaydedildi.", "path": full_path}
+            return {"success": True, "message": f"{filename} basariyla kaydedildi."}
         except Exception as e:
-            return {"success": False, "error": f"Dosya yazma hatasi: {str(e)}"}
+            return {"success": False, "error": str(e)}
 
-    @staticmethod
-    def read_file(filename: str) -> Dict[str, Any]:
-        """allowed_workspace icinden guvenli dosya okur."""
+    def read_file(self, filename: str) -> dict:
+        """Calisma alanindaki dosyanin icerigini okur."""
+        target_path = self._resolve_safe_path(filename)
+        if not os.path.exists(target_path):
+            return {"success": False, "error": f"{filename} bulunamadi."}
         try:
-            full_path = guard.get_safe_path(filename)
-            if not os.path.exists(full_path):
-                return {"success": False, "error": f"'{filename}' bulunamadi."}
-            with open(full_path, "r", encoding="utf-8") as f:
+            with open(target_path, "r", encoding="utf-8") as f:
                 content = f.read()
             return {"success": True, "content": content}
         except Exception as e:
-            return {"success": False, "error": f"Dosya okuma hatasi: {str(e)}"}
+            return {"success": False, "error": str(e)}
 
-    @staticmethod
-    def list_files() -> List[str]:
-        """Calisma alanindaki tum dosyalari listeler."""
-        try:
-            workspace = guard.allowed_dir
-            if not os.path.exists(workspace):
-                return []
-            return [f for f in os.listdir(workspace) if os.path.isfile(os.path.join(workspace, f))]
-        except Exception:
+    def list_files(self) -> list:
+        """Calisma alanindaki dosyalari listeler."""
+        if not os.path.exists(self.workspace_dir):
             return []
+        return [f for f in os.listdir(self.workspace_dir) if os.path.isfile(os.path.join(self.workspace_dir, f))]
 
-    # --- KOD CALISTIRMA VE HATA AYIKLAMA ---
-    @staticmethod
-    def execute_python_code(code: str, timeout: int = 15) -> Dict[str, Any]:
-        """Python kodunu allowed_workspace dizininde bagimsiz bir alt surec olarak calistirir."""
-        temp_file = guard.get_safe_path("_temp_exec.py")
+    def apply_patch(self, filename: str, search_block: str, replace_block: str) -> dict:
+        """
+        Claude Code tarzi hedefli duzenleme.
+        Dosyanin tamamini yeniden yazmak yerine sadece belirtilen kod blogunu degistirir.
+        """
+        target_path = self._resolve_safe_path(filename)
+        if not os.path.exists(target_path):
+            return {"success": False, "error": f"Hedef dosya bulunamadi: {filename}"}
+
+        try:
+            with open(target_path, "r", encoding="utf-8") as f:
+                file_content = f.read()
+
+            s_block = str(search_block).strip()
+            r_block = str(replace_block).strip()
+
+            if s_block not in file_content:
+                # Satir sonu uyumsuzluklarina karsi esnek arama
+                normalized_file = file_content.replace("\r\n", "\n")
+                normalized_search = s_block.replace("\r\n", "\n")
+                if normalized_search in normalized_file:
+                    file_content = normalized_file
+                    s_block = normalized_search
+
+            if s_block not in file_content:
+                return {
+                    "success": False, 
+                    "error": f"Degistirilecek kod blogu bulunamadi:\n{s_block}"
+                }
+
+            updated_content = file_content.replace(s_block, r_block, 1)
+
+            with open(target_path, "w", encoding="utf-8") as f:
+                f.write(updated_content)
+
+            return {"success": True, "message": f"{filename} cerrahi yontemle (patch) guncellendi."}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def search_codebase(self, query: str) -> dict:
+        """Calisma alanindaki tum dosyalarda metin / fonksiyon arar."""
+        results = {}
+        files = self.list_files()
+        for f in files:
+            full_p = os.path.join(self.workspace_dir, f)
+            try:
+                with open(full_p, "r", encoding="utf-8", errors="ignore") as file_obj:
+                    for line_num, line in enumerate(file_obj, start=1):
+                        if str(query).lower() in line.lower():
+                            if f not in results:
+                                results[f] = []
+                            results[f].append(f"Satir {line_num}: {line.strip()}")
+            except Exception:
+                pass
+        return {"success": True, "matches": results if results else "Eslesme bulunamadi."}
+
+    def execute_python_code(self, code: str) -> dict:
+        """Calisma alaninda Python kodu calistirir."""
+        temp_file = os.path.join(self.workspace_dir, "_temp_exec.py")
         try:
             with open(temp_file, "w", encoding="utf-8") as f:
                 f.write(code)
 
             result = subprocess.run(
                 [sys.executable, temp_file],
-                cwd=guard.allowed_dir,
+                cwd=self.workspace_dir,
                 capture_output=True,
                 text=True,
-                timeout=timeout
+                timeout=30
             )
-
-            stdout = result.stdout.strip()
-            stderr = result.stderr.strip()
 
             return {
                 "success": result.returncode == 0,
-                "stdout": stdout,
-                "stderr": stderr,
-                "returncode": result.returncode
+                "stdout": result.stdout,
+                "stderr": result.stderr
             }
         except subprocess.TimeoutExpired:
-            return {"success": False, "error": f"Calistirma zaman asimina ugradi ({timeout} saniye). Sonsuz dongu olabilir."}
+            return {"success": False, "stderr": "Calistirma zaman asimina ugradi (Timeout - 30s)."}
         except Exception as e:
-            return {"success": False, "error": f"Yurutme hatasi: {str(e)}"}
-        finally:
-            if os.path.exists(temp_file):
-                try:
-                    os.remove(temp_file)
-                except Exception:
-                    pass
+            return {"success": False, "stderr": str(e)}
 
-    # --- ANALITIK VE SEMBOLIK MATEMATIK MOTORU ---
-    @staticmethod
-    def solve_math(expression_str: str, var_str: str = "x", operation: str = "solve") -> Dict[str, Any]:
-        """SymPy ile analitik islem yapar.
-        operation: 'solve' (kok bulma), 'diff' (turev), 'integrate' (integral), 'simplify' (sadelestirme)
-        """
+    def solve_math(self, expression: str, variable: str = "x", task: str = "solve") -> dict:
+        """SymPy ile sembolik matematik cozer."""
         try:
-            var = sp.symbols(var_str)
-            expr = sp.sympify(expression_str)
+            var = sp.Symbol(variable)
+            expr = sp.sympify(expression)
 
-            if operation == "solve":
-                result = sp.solve(expr, var)
-            elif operation == "diff":
-                result = sp.diff(expr, var)
-            elif operation == "integrate":
-                result = sp.integrate(expr, var)
-            elif operation == "simplify":
-                result = sp.simplify(expr)
+            if task == "solve":
+                sol = sp.solve(expr, var)
+            elif task == "diff":
+                sol = sp.diff(expr, var)
+            elif task == "integrate":
+                sol = sp.integrate(expr, var)
             else:
-                return {"success": False, "error": f"Desteklenmeyen islem turu: {operation}"}
+                return {"success": False, "error": f"Gecersiz islem: {task}"}
 
-            return {
-                "success": True,
-                "result": str(result),
-                "latex": sp.latex(result)
-            }
+            return {"success": True, "result": str(sol)}
         except Exception as e:
-            return {"success": False, "error": f"Sembolik matematik hatasi: {str(e)}"}
+            return {"success": False, "error": str(e)}

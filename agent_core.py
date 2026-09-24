@@ -37,7 +37,8 @@ KULLANABILECEGIN ARACLAR:
 7. search_codebase: Calisma alanindaki dosyalarda fonksiyon veya kelime arar. Parametreler: {{"query": "aranan_kelime"}}
 
 KURALLAR:
-- Kullanici bir dosya yazmani, kod calistirmani veya denklem cozmeni istediginde tek basina duz metin yazma; eylemini planla.
+- ASLA <tool_call> veya benzeri XML/HTML etiketleri kullanma!
+- Kullanici bir dosya yazmani, kod calistirmani, duzenlemeni (patch) veya denklem cozmeni istediginde tek basina duz metin yazma; eylemini planla.
 - Grafik cizerken Matplotlib kullan. Arayuzsuz calistigin icin ASLA plt.show() kullanma. Grafikleri her zaman calisma alanina plt.savefig('grafik_adi.png', bbox_inches='tight') seklinde kaydet ve ardindan plt.close() cagir.
 - Eger bir eylem (tool) calistiracaksan cevabinin EN SONUNA kesinlikle su formatta JSON ekle:
 
@@ -74,7 +75,7 @@ EYLEM_DETAYI:
         return priority_models
 
     def transcribe_engineering_image(self, image_bytes: bytes, mime_type: str = "image/png") -> tuple:
-        """Gorseli Gemini Vision ile analiz eder. Dondurur: (Basari: bool, Mesaj/Döküm: str)"""
+        """Gorseli Gemini Vision ile analiz eder. Dondurur: (Basari: bool, Mesaj/Dokum: str)"""
         if not self.gemini_api_key:
             return False, "GEMINI_API_KEY tanimli degil. Lutfen .env dosyasina ekleyin."
 
@@ -123,17 +124,15 @@ EYLEM_DETAYI:
         return False, f"Gemini Vision modellerinden yanit alinamadi. Son durum: {last_error}"
 
     def assess_complexity(self, prompt_text: str) -> tuple:
-        """Girdinin teknik agirligini analiz eder."""
+        """Girdinin teknik agirligini ve karmasikligini puanlar."""
         score = 0
         reasons = []
         text_lower = str(prompt_text).lower()
 
-        # 1. Kriter: Gorsel veya sayisallastirilmis sema var mi?
         if "teknik dokumu (perception)" in text_lower or "inline_data" in text_lower:
             score += 4
             reasons.append("Teknik Cizim/Diyagram")
 
-        # 2. Kriter: Agir muhendislik ve fizik anahtar kelimeleri
         heavy_engineering = [
             "kafes", "truss", "mesnet", "statik", "mukavemet", "gerilme", "stress", 
             "sehim", "burulma", "atalet", "moment", "serbest cisim", "kesit metodu", "dugum metodu",
@@ -146,47 +145,42 @@ EYLEM_DETAYI:
         if matched_eng:
             eng_weight = min(len(matched_eng) * 2, 4)
             score += eng_weight
-            reasons.append(f"Mühendislik Kavramları ({', '.join(matched_eng[:2])})")
+            reasons.append(f"Muhendislik Kavramlari ({', '.join(matched_eng[:2])})")
 
-        # 3. Kriter: Sayisal yogunluk ve birimler
         math_patterns = [r"\b\d+\.?\d*\s*(?:kn|n|kpa|mpa|gpa|mm|m/s|rad/s)\b", r"[\^_\{\}\\]", r"[=<>]=?"]
         math_matches = sum(len(re.findall(p, text_lower)) for p in math_patterns)
         if math_matches >= 3:
             score += 2
-            reasons.append("Birim/Sayısal Yoğunluk")
+            reasons.append("Birim/Sayisal Yogunluk")
 
-        # 4. Kriter: Cok adimli analiz talebi
         reasoning_prompts = ["adim adim", "ayrintili", "ispatla", "analiz et", "cozumunu yap", "hesapla"]
         if any(rp in text_lower for rp in reasoning_prompts):
             score += 1
-            reasons.append("Adım Adım Hesaplama")
+            reasons.append("Adim Adim Hesaplama")
 
         is_heavy = score >= 3
         return is_heavy, score, reasons
 
     def select_best_model(self, prompt_text: str, available_models: list) -> tuple:
-        """Gorevin zorluk seviyesine gore en stabil modeli dinamik olarak secer."""
+        """Gorevin zorluk seviyesine gore en kararlı modeli dinamik olarak secer."""
         if not available_models:
             return "meta-llama/llama-3.3-70b-instruct:free", "Model listesi bos, varsayilan atandi."
 
         is_heavy, score, reasons = self.assess_complexity(prompt_text)
 
-        # Agir ve kararlı modeller (Oncelik sirali)
         tier1_heavy = [
             "llama-3.3-70b",
             "deepseek-r1",
             "qwen-2.5-72b"
         ]
 
-        # Hizli modeller
         tier2_fast = [
             "llama-3.1-8b",
             "qwen",
             "mistral"
         ]
 
-        # Kesinlikle secilmeyecek hafif veya kuyrukta kilitlenen modeller
-        banned = ["mini", "1b", "3b", "lite", "nex", "small", "guard", "moderation", "lightning"]
+        banned = ["mini", "1b", "3b", "lite", "nex", "small", "guard", "moderation", "nemotron", "lightning"]
         selected = None
 
         if is_heavy:
@@ -198,7 +192,7 @@ EYLEM_DETAYI:
                         break
                 if selected:
                     break
-            report = f"Ağır Problem (Skor {score}/10: {', '.join(reasons)}) -> Yüksek Muhakeme Modeli"
+            report = f"Agir Problem (Skor {score}/10: {', '.join(reasons)}) -> Yuksek Muhakeme Modeli"
         else:
             for fast_slug in tier2_fast:
                 for m in available_models:
@@ -208,7 +202,7 @@ EYLEM_DETAYI:
                         break
                 if selected:
                     break
-            report = f"Standart Görev (Skor {score}/10) -> Hızlı Model"
+            report = f"Standart Gorev (Skor {score}/10) -> Hizli Model"
 
         if not selected:
             clean_pool = [m for m in available_models if not any(b in m.lower() for b in banned)]
@@ -228,10 +222,9 @@ EYLEM_DETAYI:
         messages.extend(history)
 
         pool = available_models or []
-        banned = ["mini", "1b", "3b", "guard", "moderation", "nex", "lightning"]
+        banned = ["mini", "1b", "3b", "guard", "moderation", "nex", "nemotron", "lightning"]
         text_candidates = [m for m in pool if not any(w in m.lower() for w in banned)]
         
-        # En fazla secilen model + 1 yedek dene (toplam max 2 model, kilitlenmeyi onler)
         models_to_try = [model_name]
         for m in text_candidates:
             if m != model_name and len(models_to_try) < 2:
@@ -245,7 +238,6 @@ EYLEM_DETAYI:
                 "temperature": 0.1
             }
             try:
-                # Baglanti: 10s, Yanit: 35s zaman asimi
                 response = requests.post(self.api_url, headers=headers, json=payload, timeout=(10, 35))
                 if response.status_code == 200:
                     return response.json()["choices"][0]["message"]["content"]
@@ -261,7 +253,9 @@ EYLEM_DETAYI:
         return f"⚠️ Modellerden yanit alinamadi. Son durum: {last_error}"
 
     def parse_action(self, response_text: str):
+        """Model ciktisindan eylemi yakalar (JSON ve XML/<tool_call> hibrit destekli)."""
         try:
+            # 1. Standart EYLEM_DETAYI blogu kontrolu
             if "EYLEM_DETAYI:" in response_text:
                 json_part = response_text.split("EYLEM_DETAYI:")[1].strip()
                 if json_part.startswith("```"):
@@ -269,17 +263,32 @@ EYLEM_DETAYI:
                     json_part = re.sub(r"\n```$", "", json_part)
                 return json.loads(json_part.strip())
 
-            match = re.search(r'\{[\s\r\n]*"action"[\s\r\n]*:[\s\S]*\}', response_text)
+            # 2. Genel JSON nesnesi yakalama
+            match = re.search(r'\{[\s\r\n]*"action"[\s\r\n]*:[\s\S]*?\}', response_text)
             if match:
                 raw_json = match.group(0).strip()
-                if raw_json.endswith("```"):
-                    raw_json = raw_json[:-3].strip()
                 return json.loads(raw_json)
+
+            # 3. Modelin XML <tool_call> uretmesi durumu (Qwen/Hermes modelleri)
+            xml_match = re.search(r'<tool_call>(.*?)</tool_call>', response_text, re.DOTALL)
+            if xml_match:
+                inner = xml_match.group(1).strip()
+                if inner.startswith("{") and inner.endswith("}"):
+                    data = json.loads(inner)
+                    return {"action": data.get("name"), "params": data.get("arguments", {})}
+                
+                parts = inner.split(None, 1)
+                action_name = parts[0].strip() if parts else ""
+                pairs = re.findall(r'<arg_key>(.*?)</arg_key>\s*<arg_value>(.*?)</arg_value>', inner, re.DOTALL)
+                params = {k.strip(): v.strip() for k, v in pairs}
+                return {"action": action_name, "params": params}
+
         except Exception as e:
             print(f"Action parse hatasi: {e}")
         return None
 
     def execute_approved_action(self, action_info: dict) -> dict:
+        """Kullanicinin onayladigi veya guvenli gorulen eylemi yurutur."""
         action = action_info.get("action")
         params = action_info.get("params", {})
 
