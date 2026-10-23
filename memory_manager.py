@@ -36,8 +36,10 @@ class NodusMemory:
             return default
 
     def _save_json(self, path: str, data: Any):
-        with open(path, "w", encoding="utf-8") as f:
+        tmp = path + ".tmp"  # atomik yazim: yarim kalan yazma hafizayi bozmaz
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
 
     # --- 1. KATMAN: KALICI GERCEKLER / KURALLAR (PINNED FACTS) ---
     def get_facts(self) -> List[str]:
@@ -118,3 +120,122 @@ class NodusMemory:
         """Tum hafizayi (kurallar dahil) sifirlar."""
         self._save_json(self.facts_file, [])
         self.reset_history_only()
+
+class NodusNotes:
+    """Kalici uzun sureli not hafizasi (SQLite FTS5 ile tam metin arama; FTS5 yoksa LIKE).
+    Sohbet gecmisinden bagimsizdir: 'remember' ile eklenir, 'recall' ile aranir."""
+    MAX_NOTES = 2000
+
+    def __init__(self, path: str = None):
+        import sqlite3
+        self._sqlite3 = sqlite3
+        self.path = path or os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory", "notes.db")
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        with self._conn() as c:
+            try:
+                c.execute("CREATE VIRTUAL TABLE IF NOT EXISTS notes USING fts5(text, tags, created UNINDEXED)")
+                self.fts = True
+            except sqlite3.OperationalError:
+                c.execute("CREATE TABLE IF NOT EXISTS notes(text, tags, created)")
+                self.fts = False
+
+    def _conn(self):
+        from contextlib import closing
+        return closing(self._sqlite3.connect(self.path))
+
+    def add(self, text: str, tags: str = "") -> bool:
+        import time
+        text = str(text).strip()[:2000]
+        if not text:
+            return False
+        with self._conn() as c:
+            c.execute("INSERT INTO notes(text, tags, created) VALUES (?,?,?)",
+                      (text, str(tags).strip()[:200], time.strftime("%Y-%m-%d %H:%M")))
+            c.execute("DELETE FROM notes WHERE rowid <= (SELECT MAX(rowid) FROM notes) - ?", (self.MAX_NOTES,))
+            c.commit()
+        return True
+
+    def search(self, query: str, limit: int = 5) -> list:
+        import re
+        tokens = list(dict.fromkeys(re.findall(r"\w{2,}", str(query).lower())))[:12]
+        if not tokens:
+            return []
+        with self._conn() as c:
+            if self.fts:
+                match = " OR ".join('"%s"' % t.replace('"', "") for t in tokens)
+                rows = c.execute("SELECT text, tags, created FROM notes WHERE notes MATCH ? ORDER BY rank LIMIT ?",
+                                 (match, limit)).fetchall()
+            else:
+                cond = " OR ".join("lower(text || ' ' || tags) LIKE ?" for _ in tokens)
+                rows = c.execute(f"SELECT text, tags, created FROM notes WHERE {cond} ORDER BY rowid DESC LIMIT ?",
+                                 [f"%{t}%" for t in tokens] + [limit]).fetchall()
+        return [{"text": t, "tags": g, "created": d} for t, g, d in rows]
+
+    def clear(self):
+        with self._conn() as c:
+            c.execute("DELETE FROM notes")
+            c.commit()
+
+
+class NodusSessions:
+    """Birden fazla sohbeti diske kaydeder ve geri yukler (memory/sessions/<kimlik>.json).
+    Gorseller ve buyuk ekler kaydedilmez; yalnizca rol/icerik metni saklanir."""
+    ID_RE = r"[0-9]{8}-[0-9]{6}-[0-9a-f]{4}"
+    MAX_MESSAGES = 300
+
+    def __init__(self, directory: str = None):
+        self.dir = directory or os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory", "sessions")
+        os.makedirs(self.dir, exist_ok=True)
+
+    @staticmethod
+    def new_id() -> str:
+        import time, uuid
+        return time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:4]
+
+    def _path(self, sid: str) -> str:
+        import re
+        if not re.fullmatch(self.ID_RE, str(sid)):
+            raise ValueError("Gecersiz sohbet kimligi.")
+        return os.path.join(self.dir, f"{sid}.json")
+
+    def save(self, sid: str, messages: list):
+        clean = [{"role": m.get("role", "user"), "content": str(m.get("content", ""))[:20000],
+                  **({"images": [x for x in m["images"] if isinstance(x, str)][:20]} if m.get("images") else {})}
+                 for m in messages if m.get("content")][-self.MAX_MESSAGES:]
+        if not clean:
+            return
+        first = next((m["content"] for m in clean if m["role"] == "user"), "Yeni sohbet")
+        data = {"title": " ".join(first.split())[:50] or "Yeni sohbet", "messages": clean}
+        path = self._path(sid)
+        with open(path + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(path + ".tmp", path)
+
+    def list(self) -> list:
+        import time
+        out = []
+        for name in os.listdir(self.dir):
+            sid = name[:-5]
+            if not name.endswith(".json"):
+                continue
+            try:
+                path = self._path(sid)
+                with open(path, "r", encoding="utf-8") as f:
+                    title = json.load(f).get("title", sid)
+                out.append({"id": sid, "title": title, "mtime": os.path.getmtime(path)})
+            except Exception:
+                continue
+        return sorted(out, key=lambda x: x["mtime"], reverse=True)
+
+    def load(self, sid: str) -> list:
+        try:
+            with open(self._path(sid), "r", encoding="utf-8") as f:
+                return json.load(f).get("messages", [])
+        except Exception:
+            return []
+
+    def delete(self, sid: str):
+        try:
+            os.remove(self._path(sid))
+        except Exception:
+            pass
