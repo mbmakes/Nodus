@@ -1,0 +1,241 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+:root {
+  /* light-dark(): tarayici, Streamlit'in .stApp uzerine yazdigi color-scheme'e gore acik/koyu secer */
+  --paper: light-dark(#FFFFFF, #0E141C);
+  --panel: light-dark(#FFFFFF, #161E29);
+  --ink: light-dark(#121C2B, #E8EDF3);
+  --steel: light-dark(#5B6B7F, #8A99AD);
+  --rule: light-dark(#D5DBE3, #263243);
+  --rail: light-dark(#FFFFFF, #121A24);
+  --wash: light-dark(#F3F5F8, #1B2431);
+  --blue: light-dark(#2F6FDE, #5B93F0);
+  --on-ink: light-dark(#FFFFFF, #0E141C);
+  --ink-hover: light-dark(#24344B, #CBD5E1);
+  --tint: light-dark(rgba(18, 28, 43, 0.06), rgba(255, 255, 255, 0.07));
+  --signal: #F2B705;
+  --ok: #2E9E6B;
+}
+
+html, body, [class*="st-"], .stApp {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}
+/* Streamlit ikonlari ligature fontuyla cizilir; genel yazi tipi kurali bunu ezmesin */
+[data-testid="stIconMaterial"], .material-symbols-rounded, .material-icons {
+  font-family: 'Material Symbols Rounded', 'Material Icons' !important;
+}
+code, pre, kbd, [data-testid="stCode"] * {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace !important;
+}
+
+.stApp { background: var(--paper); color: var(--ink); }
+
+/* Streamlit krom'u: yalnizca gereksiz parcalar gizlenir, kenar cubugu dugmesi kalir */
+[data-testid="stHeader"] { background: transparent; }
+[data-testid="stAppDeployButton"], footer { display: none !important; }
+
+/* ---------- Sohbet alani ---------- */
+[data-testid="stMainBlockContainer"], .block-container,
+[data-testid="stBottomBlockContainer"] {
+  max-width: 820px;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+}
+[data-testid="stMainBlockContainer"], .block-container {
+  padding-top: 2.5rem;
+  padding-bottom: 7rem;
+}
+
+[data-testid="stChatMessageAvatarUser"],
+[data-testid="stChatMessageAvatarAssistant"] { display: none; }
+
+[data-testid="stChatMessage"] {
+  background: transparent;
+  padding: 0.35rem 0;
+  gap: 0;
+}
+[data-testid="stChatMessage"] p,
+[data-testid="stChatMessage"] li { line-height: 1.65; font-size: 0.97rem; }
+
+/* kullanici mesaji: sade panel; asistan mesaji: sayfanin kendisi */
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 0.7rem 1rem;
+  margin: 0.9rem 0 0.4rem;
+}
+
+/* ---------- Giris kutusu ---------- */
+[data-testid="stBottom"] > div, [data-testid="stBottomBlockContainer"] { background: transparent; }
+[data-testid="stChatInput"] {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  box-shadow: 0 1px 0 rgba(18, 28, 43, 0.04);
+}
+[data-testid="stChatInput"]:focus-within {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(47, 111, 222, 0.18);
+}
+[data-testid="stChatInput"] > div, [data-testid="stChatInput"] textarea { background: var(--panel) !important; }
+[data-testid="stChatInput"] textarea { color: var(--ink); }
+[data-testid="stChatInput"] textarea::placeholder { color: var(--steel); }
+
+/* ---------- Dugmeler ---------- */
+.stButton > button, .stDownloadButton > button {
+  border-radius: 8px;
+  border: 1px solid var(--rule);
+  background: var(--panel);
+  color: var(--ink);
+  font-weight: 500;
+  box-shadow: none;
+  transition: border-color .12s, background .12s;
+}
+.stButton > button:hover, .stDownloadButton > button:hover {
+  border-color: var(--ink);
+  background: var(--panel);
+  color: var(--ink);
+}
+.stButton > button:focus-visible, .stDownloadButton > button:focus-visible,
+[role="tab"]:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.stButton > button[kind="primary"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--on-ink);
+}
+.stButton > button[kind="primary"] p { color: var(--on-ink); }
+.stButton > button[kind="primary"]:hover { background: var(--ink-hover); border-color: var(--ink-hover); color: var(--on-ink); }
+
+/* ---------- Kenar cubugu (ray) ---------- */
+[data-testid="stSidebar"] {
+  background: var(--rail);
+  border-right: 1px solid var(--rule);
+}
+[data-testid="stSidebar"] [data-testid="stSidebarContent"] { padding-top: 0.5rem; }
+[data-testid="stSidebar"] hr { margin: 0.9rem 0; border-color: var(--rule); }
+
+.nodus-mark {
+  display: flex; align-items: baseline; gap: .5rem;
+  padding: .25rem 0 .9rem;
+}
+.nodus-mark b { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
+.nodus-mark span { font-size: .78rem; color: var(--steel); }
+
+/* sohbet listesi: tek satirlik, cercevesiz satirlar */
+[class*="st-key-ses_"] .stButton > button {
+  justify-content: flex-start;
+  text-align: left;
+  background: transparent;
+  border-color: transparent;
+  color: var(--steel);
+  padding: .3rem .6rem;
+  min-height: 0;
+  font-weight: 400;
+}
+[class*="st-key-ses_"] .stButton > button p {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+[class*="st-key-ses_"] .stButton > button:hover { background: var(--tint); border-color: transparent; }
+[class*="st-key-ses_on_"] .stButton > button {
+  background: var(--panel);
+  border-color: var(--rule);
+  color: var(--ink);
+  font-weight: 500;
+}
+[class*="st-key-sdel_"] .stButton > button { padding: .3rem 0; color: var(--steel); }
+
+/* ---------- Sekmeler ---------- */
+[data-baseweb="tab-list"] { gap: .25rem; border-bottom: 1px solid var(--rule); }
+[data-baseweb="tab"] { height: 2.2rem; padding: 0 .6rem; color: var(--steel); font-weight: 500; }
+[data-baseweb="tab"][aria-selected="true"] { color: var(--ink); }
+[data-baseweb="tab-highlight"] { background: var(--ink); height: 2px; }
+[data-baseweb="tab-border"] { display: none; }
+
+/* ---------- Bos durum ---------- */
+.nodus-empty { padding: 18vh 0 0; }
+.nodus-empty h1 {
+  font-size: 2.1rem; font-weight: 500; letter-spacing: -0.02em; line-height: 1.15;
+  margin: 0 0 .6rem; color: var(--ink);
+}
+.nodus-empty p { margin: 0; color: var(--steel); font-size: 1rem; max-width: 46ch; }
+
+/* ---------- Durum cubugu ---------- */
+.nodus-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: .8rem; color: var(--steel);
+  padding-bottom: .6rem; margin-bottom: .8rem; border-bottom: 1px solid var(--rule);
+}
+.nodus-bar .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: .45rem; background: var(--ok); }
+.nodus-bar .dot.warn { background: var(--signal); }
+.nodus-bar .model { font-family: 'IBM Plex Mono', monospace; }
+
+/* ---------- Onay kapisi: arayuzun tek cesur parcasi ---------- */
+.st-key-gate {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--ink);
+  border-radius: 10px;
+  padding: 1.6rem 1.25rem 1.1rem;
+  margin: 1rem 0;
+  overflow: hidden;
+}
+.st-key-gate::before {
+  content: "";
+  position: absolute; inset: 0 0 auto 0; height: 10px;
+  background: repeating-linear-gradient(-45deg, var(--signal) 0 10px, var(--ink) 10px 20px);
+}
+.gate-title { font-size: 1.05rem; font-weight: 600; margin: 0 0 .25rem; }
+.gate-reason { color: var(--steel); margin: 0 0 .8rem; font-size: .93rem; }
+.gate-action {
+  display: inline-block; font-family: 'IBM Plex Mono', monospace; font-size: .8rem;
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .1rem .5rem; margin-bottom: .6rem;
+}
+
+/* ---------- Baslangic onerileri ---------- */
+[class*="st-key-starter_"] .stButton > button {
+  justify-content: flex-start; text-align: left;
+  padding: .75rem 1rem; border-radius: 10px; font-weight: 400;
+}
+[class*="st-key-starter_"] .stButton > button:hover { border-color: var(--blue); }
+[class*="st-key-starter_"] .stButton > button, [class*="st-key-starter_"] .stButton > button div,
+[class*="st-key-starter_"] .stButton > button p { justify-content: flex-start; text-align: left; }
+
+/* ---------- Cevap tipografisi: tablo, baslik, satir ici kod ---------- */
+[data-testid="stMarkdownContainer"] h1, [data-testid="stMarkdownContainer"] h2, [data-testid="stMarkdownContainer"] h3 {
+  letter-spacing: -0.01em; font-weight: 600; color: var(--ink);
+}
+[data-testid="stMarkdownContainer"] h1 { font-size: 1.35rem; }
+[data-testid="stMarkdownContainer"] h2 { font-size: 1.15rem; }
+[data-testid="stMarkdownContainer"] h3 { font-size: 1rem; }
+[data-testid="stMarkdownContainer"] table { border-collapse: collapse; width: 100%; font-size: .9rem; margin: .5rem 0; }
+[data-testid="stMarkdownContainer"] th {
+  text-align: left; font-weight: 600; background: var(--wash);
+  border-bottom: 1px solid var(--ink); padding: .4rem .7rem;
+}
+[data-testid="stMarkdownContainer"] td { border-bottom: 1px solid var(--rule); padding: .4rem .7rem; font-variant-numeric: tabular-nums; }
+[data-testid="stMarkdownContainer"] :not(pre) > code {
+  background: var(--wash); border: 1px solid var(--rule); border-radius: 5px; padding: .05rem .35rem; font-size: .86em; color: var(--ink);
+}
+[data-testid="stChatInputSubmitButton"] { color: var(--on-ink); background: var(--ink) !important; border-radius: 8px; }
+[data-testid="stChatInputSubmitButton"]:disabled { background: var(--rule) !important; color: var(--steel); }
+
+* { scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
+
+/* ---------- Durum kutusu / ilerleme ---------- */
+[data-testid="stStatus"], [data-testid="stExpander"] {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+@media (max-width: 640px) {
+  .nodus-empty { padding-top: 8vh; }
+  .nodus-empty h1 { font-size: 1.6rem; }
+}

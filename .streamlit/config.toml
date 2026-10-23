@@ -1,0 +1,20 @@
+[server]
+# Ajan kod calistirabildigi icin yalnizca bu bilgisayardan erisilebilsin.
+address = "127.0.0.1"
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+
+# Tema sistem ayarini izler; elle secmek icin sag ustteki menu > Settings > Theme.
+[theme.light]
+primaryColor = "#2F6FDE"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F3F5F8"
+textColor = "#121C2B"
+
+[theme.dark]
+primaryColor = "#5B93F0"
+backgroundColor = "#0E141C"
+secondaryBackgroundColor = "#121A24"
+textColor = "#E8EDF3"
