@@ -36,7 +36,26 @@ def test_steam_table():
     assert "| 1.000 | 99.61 |" in md and "| 2.000 | 120.21 |" in md
 
 
+def test_pump_shaft_bolt_wall_hand_calcs():
+    p = engcalc.run("pump_power", {"flow_lps": 10, "head_m": 30, "efficiency": 0.7})
+    assert cell(p, "Mil gücü") == pytest.approx(1000 * 9.80665 * 0.01 * 30 / 0.7 / 1000, rel=0.002)   # 4.203 kW
+    s = engcalc.run("shaft_torsion", {"power_kw": 15, "rpm": 1450, "d_mm": 40, "length_m": 0.5})
+    assert cell(s, "Tork T") == pytest.approx(98.79, rel=0.002)
+    assert cell(s, "Maksimum kayma gerilmesi τ") == pytest.approx(16 * 98.79 / (3.14159265 * 0.04 ** 3) / 1e6, rel=0.002)   # 7.86 MPa
+    b = engcalc.run("bolt_check", {"size": "M12", "grade": "8.8", "axial_n": 20000})
+    assert cell(b, "Cıvata başına çekme σ") == pytest.approx(20000 / 84.3, rel=0.002)
+    assert cell(b, "Güvenlik katsayısı") == pytest.approx(600 / (20000 / 84.3), rel=0.01)
+    w = engcalc.run("wall_heat", {"layers": [{"thickness_mm": 200, "k_wm": 0.8}], "t_in_c": 20, "t_out_c": -5})
+    assert cell(w, "Toplam direnç") == pytest.approx(0.1 + 0.25 + 0.04)
+    assert cell(w, "Isı akısı q") == pytest.approx(25 / 0.39, rel=0.002)
+
+
 @pytest.mark.parametrize("calc,params", [
+    ("pump_power", {"flow_lps": 5, "head_m": 10, "efficiency": 1.5}),
+    ("shaft_torsion", {"d_mm": 30}),
+    ("bolt_check", {"size": "M99", "axial_n": 1}),
+    ("bolt_check", {"size": "M10"}),
+    ("wall_heat", {"layers": [], "t_in_c": 20, "t_out_c": 0}),
     ("pipe_pressure_drop", {"diameter_mm": -5, "length_m": 10, "flow_lps": 1}),
     ("pipe_pressure_drop", {"diameter_mm": 50, "length_m": 10}),
     ("beam_deflection", {"length_m": 2, "load_n": 500, "section": "hollow_square", "b_mm": 10, "t_mm": 6}),

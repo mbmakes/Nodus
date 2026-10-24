@@ -1,9 +1,11 @@
+<p align="center"><img src="docs/img/logo.png" width="120" alt="Nodus logosu"></p>
+
 # Nodus
 
 **Mühendislik hesaplarını, dosya ve araştırma işlerini kendi başına yürüten, yerel çalışan otonom yapay zeka ajanı.**
 *An autonomous, locally-run AI agent for engineering calculations, file work and research.*
 
-> **Sürüm: v1.0-beta.** Günlük kullanıma yakın ama henüz geniş çapta denenmedi. Bilinen sınırlar için [Sınırlar](#sınırlar-ve-beta-notları) bölümüne bak.
+> **Sürüm: v1.3-beta.** Günlük kullanıma yakın ama henüz geniş çapta denenmedi. Bilinen sınırlar için [Sınırlar](#sınırlar-ve-beta-notları) bölümüne bak.
 
 ![Hesap föyü: adım kaydı, denklem ve tablo](docs/img/hesap-foyu.png)
 
@@ -23,7 +25,7 @@ Bir görevi Türkçe yazarsın; Nodus planlar, doğru aracı seçer, hesabı yap
 
 | | |
 |---|---|
-| **Hazır, doğrulanmış hesaplar** | Boru basınç kaybı (Darcy-Weisbach + Colebrook-White), kiriş sehimi ve gerilmesi, doymuş buhar tablosu. Model formülü kafasından yazmaz; `eng_calc` aracı ile birim testli fonksiyonları çağırır. |
+| **Hazır, doğrulanmış hesaplar** | Boru basınç kaybı (Darcy-Weisbach + Colebrook-White), kiriş sehimi ve gerilmesi, doymuş buhar tablosu, pompa/fan gücü, mil burulması, cıvata kontrolü ve çok katmanlı duvardan ısı geçişi. Model formülü kafasından yazmaz; `eng_calc` aracı ile birim testli fonksiyonları çağırır. |
 | **Çoklu model yönlendirici** | Gemini, Groq ve OpenRouter arasında görev türüne göre seçim yapar; kota dolunca ya da sağlayıcı yanıt vermezse otomatik yedeğe geçer. |
 | **Çapraz doğrulama** | Ağır görevlerde cevap, farklı bir sağlayıcının modeline denetlettirilir. Model itiraz ederse hesap, itiraz notuyla bir kez yeniden yaptırılır. |
 | **Onay kapısı** | Kod çalıştırma, kabuk komutu, dosya silme, kalıcı hafıza yazımı onay ister. Onay ekranında *gerçekte çalışacak* kod (başvurulan dosyalar dahil) gösterilir. |

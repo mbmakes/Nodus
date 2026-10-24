@@ -131,6 +131,10 @@ KULLANABILECEGIN ARACLAR:
    - Boru basinc kaybi: {{"calc": "pipe_pressure_drop", "params": {{"diameter_mm": 50, "length_m": 100, "flow_lps": 5, "fluid": "Water", "temperature_c": 20, "roughness_mm": 0}}}} (flow_lps yerine velocity_ms verilebilir)
    - Kiris: {{"calc": "beam_deflection", "params": {{"support": "cantilever|simply_supported", "load": "point|udl", "length_m": 2, "load_n": 500, "w_n_per_m": 0, "E_gpa": 210, "section": "rect|hollow_square|circle", "b_mm": 40, "h_mm": 40, "t_mm": 3, "d_mm": 30}}}} (load=udl iken w_n_per_m; kesit icin yalniz gerekenleri ver)
    - Doymus buhar tablosu: {{"calc": "steam_table", "params": {{"p_min_bar": 1, "p_max_bar": 10, "n": 10}}}}
+   - Pompa/fan gucu: {{"calc": "pump_power", "params": {{"flow_lps": 10, "head_m": 30, "efficiency": 0.7, "motor_efficiency": 0.92}}}} (head_m yerine pressure_kpa; fan icin density_kgm3: 1.2)
+   - Mil burulmasi: {{"calc": "shaft_torsion", "params": {{"power_kw": 15, "rpm": 1450, "d_mm": 40, "length_m": 0.5}}}} (power_kw+rpm yerine torque_nm; length_m verilirse burulma acisi da hesaplanir)
+   - Civata kontrolu: {{"calc": "bolt_check", "params": {{"size": "M12", "grade": "8.8", "axial_n": 20000, "shear_n": 5000, "n_bolts": 4}}}} (size M6-M30 ya da area_mm2; sinif 4.6-12.9)
+   - Duvardan isi gecisi: {{"calc": "wall_heat", "params": {{"layers": [{{"thickness_mm": 200, "k_wm": 0.8}}, {{"thickness_mm": 50, "k_wm": 0.035}}], "t_in_c": 20, "t_out_c": -5, "h_in": 10, "h_out": 25, "area_m2": 12}}}}
 {plan_block}
 HAZIR KUTUPHANELER (execute_code / run_file icinde): numpy, scipy, sympy, pandas, matplotlib, fluids (akiskanlar mekanigi), CoolProp (termodinamik ozellikler), pint (birimler), anastruct (2B yapi analizi), openpyxl.
 Formulu elle yazmak yerine mumkunse bu dogrulanmis kutuphaneleri kullan; sonuclari birimleriyle ver.
