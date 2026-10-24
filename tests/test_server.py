@@ -451,3 +451,17 @@ def test_window_opens_only_after_server_is_ready(monkeypatch):
     monkeypatch.setattr(server, "open_window", lambda url: calls.append((url, state["n"])))
     server._open_when_ready("http://127.0.0.1:1", 1, timeout=10)
     assert calls == [("http://127.0.0.1:1", 3)]
+
+
+def test_shrink_image_reduces_big_screenshots_and_keeps_small_ones():
+    import io
+    from PIL import Image
+    from agent_core import shrink_image
+    big = Image.effect_noise((3200, 2000), 40).convert("RGB")   # Retina ekran goruntusu boyutu, sikismaz gurultu
+    buf = io.BytesIO(); big.save(buf, "PNG")
+    data, mime = shrink_image(buf.getvalue(), "image/png")
+    assert mime == "image/jpeg" and len(data) < len(buf.getvalue()) / 3
+    assert max(Image.open(io.BytesIO(data)).size) == 2000
+    tiny = io.BytesIO(); Image.new("RGB", (200, 100), "white").save(tiny, "PNG")
+    assert shrink_image(tiny.getvalue(), "image/png") == (tiny.getvalue(), "image/png")
+    assert shrink_image(b"bozuk", "image/png") == (b"bozuk", "image/png")

@@ -24,6 +24,31 @@ def _system_block() -> str:
     return f"- Calistigin bilgisayar: {sysname} {platform.release()}, ev klasoru {home}. Kabuk: sh/bash."
 
 
+def shrink_image(data: bytes, mime: str, max_side: int = 2000, max_bytes: int = 700_000) -> tuple:
+    """Buyuk ekran goruntulerini (Retina PNG: birkac MB) kucultup JPEG'e sikistirir; Google'a yukleme ve cozumleme suresi kisalir.
+    Kucukse, Pillow yoksa ya da dosya bozuksa orijinali dondurur. (bytes, mime)"""
+    try:
+        import io
+        from PIL import Image
+        im = Image.open(io.BytesIO(data))
+        im.load()
+        if max(im.size) <= max_side and len(data) <= max_bytes:
+            return data, mime
+        im.thumbnail((max_side, max_side), Image.LANCZOS)
+        if im.mode in ("RGBA", "LA", "P"):   # saydamlik JPEG'de siyah olur: beyaz zemine oturt
+            im = im.convert("RGBA")
+            bg = Image.new("RGB", im.size, "white")
+            bg.paste(im, mask=im.split()[-1])
+            im = bg
+        else:
+            im = im.convert("RGB")
+        out = io.BytesIO()
+        im.save(out, "JPEG", quality=88, optimize=True)
+        return (out.getvalue(), "image/jpeg") if len(out.getvalue()) < len(data) else (data, mime)
+    except Exception:
+        return data, mime
+
+
 _JSON = json.JSONDecoder(strict=False)
 ALLOWED_IMAGE_MIME = {"image/png", "image/jpeg"}
 
@@ -196,6 +221,7 @@ EYLEM_DETAYI:
             return False, "GEMINI_API_KEY tanimli degil. .env dosyasini kontrol edin."
         if mime_type not in ALLOWED_IMAGE_MIME:
             mime_type = "image/png"
+        image_bytes, mime_type = shrink_image(image_bytes, mime_type)
 
         b64_data = base64.b64encode(image_bytes).decode("utf-8")
         prompt = (

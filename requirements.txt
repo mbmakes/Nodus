@@ -22,3 +22,4 @@ python-docx
 fpdf2
 playwright
 pytest
+pillow
