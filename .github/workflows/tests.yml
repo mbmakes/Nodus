@@ -68,8 +68,13 @@ jobs:
               if ($p.HasExited) { 'install.ps1 sureci bitti, sunucu yok'; break }
               Start-Sleep -Seconds 1
             }
-            Get-Content install.log -Tail 25 -ErrorAction SilentlyContinue
-            Get-Content install.err -Tail 25 -ErrorAction SilentlyContinue
+            "=== install.ps1 cikis kodu: $(if ($p.HasExited) { $p.ExitCode } else { 'calisiyor' })"
+            "=== install.log (tam)"; Get-Content install.log -ErrorAction SilentlyContinue | Select-Object -First 120
+            "=== install.err (tam)"; Get-Content install.err -ErrorAction SilentlyContinue | Select-Object -First 120
+            "=== kurulum klasoru"; Get-ChildItem $env:NODUS_HOME -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+            "=== venv python ile sunucuyu elle dene"
+            $vp = Join-Path $env:NODUS_HOME '.venv\Scripts\python.exe'
+            if (Test-Path $vp) { & $vp -c "import sys; print(sys.version.split()[0]); import server; print('server import ok')" 2>&1 | Select-Object -Last 15 }
           } finally {
             # arka plan sureci kapatilmazsa adim bitmez: once kendi surec agacimizi, sonra test portundaki dinleyiciyi kapat
             taskkill /F /T /PID $p.Id 2>$null | Out-Null
