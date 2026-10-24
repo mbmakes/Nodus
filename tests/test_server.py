@@ -436,6 +436,7 @@ def test_system_prompt_tells_model_os_and_shell_access():
     from agent_core import NodusAgent
     p = NodusAgent()._build_system_prompt()
     assert "SISTEM ERISIMI" in p and "run_shell" in p and os.path.expanduser("~") in p
+    assert "Mustafa Bacaksiz" in p and "mustafa.bcksz" in p and "mbmakes" in p
 
 
 def test_window_opens_only_after_server_is_ready(monkeypatch):
