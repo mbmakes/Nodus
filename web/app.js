@@ -30,7 +30,7 @@ const TOOL_LABEL = {
   web_search: 'Web araması', fetch_url: 'Sayfa oku', browse_url: 'Tarayıcıda aç', read_file: 'Dosya oku', write_file: 'Dosya yaz',
   list_files: 'Dosyaları listele', apply_patch: 'Yama uygula', search_codebase: 'Dosyalarda ara', solve_math: 'Sembolik çözüm',
   solve_symbolic_math: 'Sembolik çözüm', read_document: 'Belge oku', export_report: 'Rapor üret', delete_file: 'Dosya sil',
-  self_improve: 'Yeni araç ekle', call_custom_tool: 'Özel araç', update_plan: 'Plan güncelle', remember: 'Not al', recall: 'Notlarda ara',
+  self_improve: 'Yeni araç ekle', eng_calc: 'Mühendislik hesabı', call_custom_tool: 'Özel araç', update_plan: 'Plan güncelle', remember: 'Not al', recall: 'Notlarda ara',
 };
 const STARTERS = [
   { cat: 'Akışkanlar', title: 'Borudaki basınç kaybını hesapla', desc: 'Darcy-Weisbach, Reynolds sayısı ve sürtünme katsayısıyla',
@@ -47,7 +47,7 @@ const S = {
   sid: null, sessions: [], msgs: [], pending: null, busy: false, run: null,
   models: ['auto'], model: LS.get('model', 'auto'), verify: LS.get('verify', '1') === '1', autoExec: false,
   facts: [], files: [], plan: [], sandbox: { ok: false, why: '' }, providers: [], usage: [], audio: false,
-  attach: [], tab: LS.get('tab', 'out'), preview: null, search: '',
+  attach: [], tab: LS.get('tab', 'out'), preview: null, search: '', hits: null, rested: null,
 };
 
 // ------------------------------------------------------------------ ag
@@ -129,6 +129,17 @@ function enhance(root, final) {
   }
 }
 
+async function exportReport(format, btn) {
+  const old = btn.textContent; btn.textContent = 'Hazırlanıyor…'; btn.disabled = true;
+  try {
+    const d = await post('/export', { sid: S.sid, format });
+    const a = el('a', { href: fileUrl(d.path, true), download: d.path.split('/').pop() });
+    document.body.append(a); a.click(); a.remove();
+    refreshData();
+  } catch (e) { toast(e.message); }
+  btn.textContent = old; btn.disabled = false;
+}
+
 async function copy(text, btn) {
   try {
     await navigator.clipboard.writeText(text);
@@ -158,7 +169,7 @@ function renderRail() {
   const list = $('#session-list');
   list.replaceChildren();
   const q = S.search.trim().toLocaleLowerCase('tr');
-  const items = S.sessions.filter((s) => !q || s.title.toLocaleLowerCase('tr').includes(q));
+  const items = S.sessions.filter((s) => !q || s.title.toLocaleLowerCase('tr').includes(q) || (S.hits && S.hits.has(s.id)));
   if (!items.length) list.append(el('div', { class: 'rail-empty', text: q ? 'Eşleşen görev yok.' : 'Henüz görev yok.' }));
   let last = '';
   for (const s of items) {
@@ -244,7 +255,7 @@ function chevron() {
   return s;
 }
 
-function botEl(m, figNo) {
+function botEl(m, figNo, last) {
   const art = el('article', { class: 'turn bot' });
   const st = m.steps && stepsEl(m.steps, false);
   if (st) art.append(st);
@@ -255,7 +266,11 @@ function botEl(m, figNo) {
     art.append(prose);
   }
   if (m.images && m.images.length) art.append(figsEl(m.images, figNo));
-  if (m.content) art.append(el('div', { class: 'turn-actions' }, el('button', { type: 'button', text: 'Kopyala', onclick: (e) => copy(m.content, e.currentTarget) })));
+  if (m.content) {
+    art.append(el('div', { class: 'turn-actions' }, el('button', { type: 'button', text: 'Kopyala', onclick: (e) => copy(m.content, e.currentTarget) }),
+      last ? el('button', { type: 'button', text: 'Rapor (Word)', onclick: (e) => exportReport('docx', e.currentTarget) }) : null,
+      last ? el('button', { type: 'button', text: 'Rapor (PDF)', onclick: (e) => exportReport('pdf', e.currentTarget) }) : null));
+  }
   return art;
 }
 
@@ -265,13 +280,35 @@ function figureNumbers() {
   return map;
 }
 
+function userTemplates() { try { return JSON.parse(LS.get('templates', '[]')).filter((t) => t && t.title && t.prompt).slice(0, 12); } catch { return []; } }
+function saveTemplates(list) { LS.set('templates', JSON.stringify(list)); renderSheet(); }
+
+function templateForm() {
+  const title = el('input', { type: 'text', placeholder: 'Şablon adı', 'aria-label': 'Şablon adı', maxlength: '60' });
+  const prompt = el('textarea', { rows: '3', placeholder: 'Görev metni', 'aria-label': 'Görev metni', maxlength: '2000' });
+  return el('form', { class: 'tpl-form', onsubmit: (e) => {
+    e.preventDefault();
+    if (!title.value.trim() || !prompt.value.trim()) return;
+    saveTemplates([...userTemplates(), { title: title.value.trim(), prompt: prompt.value.trim() }]);
+  } }, title, prompt, el('div', { class: 'row-btns' },
+    el('button', { class: 'btn btn-ink btn-sm', type: 'submit', text: 'Şablonu kaydet' }),
+    el('button', { class: 'btn btn-sm', type: 'button', text: 'Vazgeç', onclick: () => renderSheet() })));
+}
+
 function emptyEl() {
+  const mine = userTemplates();
   return el('section', { class: 'empty' },
     el('h1', { text: 'Ne üzerinde çalışıyoruz?' }),
     el('p', { text: 'Hesabı, analizi ya da araştırmayı yaz. Görsel, PDF, Excel veya Word dosyası ekleyebilirsin.' }),
     el('div', { class: 'register' }, STARTERS.map((s) => el('button', { class: 'reg-row', type: 'button',
       onclick: () => (s.attach ? $('#file-input').click() : sendText(s.prompt)) },
-      el('span', { class: 'reg-cat', text: s.cat }), el('span', { class: 'reg-main' }, el('b', { text: s.title }), el('small', { text: s.desc }))))));
+      el('span', { class: 'reg-cat', text: s.cat }), el('span', { class: 'reg-main' }, el('b', { text: s.title }), el('small', { text: s.desc })))),
+      mine.map((t, i) => el('div', { class: 'reg-mine' },
+        el('button', { class: 'reg-row', type: 'button', onclick: () => sendText(t.prompt) },
+          el('span', { class: 'reg-cat', text: 'Şablonum' }), el('span', { class: 'reg-main' }, el('b', { text: t.title }), el('small', { text: t.prompt.slice(0, 90) }))),
+        el('button', { class: 'icon-btn', type: 'button', 'aria-label': t.title + ' şablonunu sil', onclick: () => saveTemplates(mine.filter((_, j) => j !== i)) }, delIcon())))),
+    el('div', { class: 'tpl-add' }, el('button', { class: 'btn btn-sm', type: 'button', text: '+ Kendi şablonunu ekle',
+      onclick: (e) => e.currentTarget.replaceWith(templateForm()) })));
 }
 
 function renderSheet(keepScroll) {
@@ -280,7 +317,8 @@ function renderSheet(keepScroll) {
   const figNo = figureNumbers();
   inner.replaceChildren();
   if (!S.msgs.length && !S.run && !S.pending) inner.append(emptyEl());
-  for (const m of S.msgs) inner.append(m.role === 'user' ? taskEl(m) : botEl(m, figNo));
+  const lastBot = S.msgs.map((m) => m.role).lastIndexOf('assistant');
+  S.msgs.forEach((m, i) => inner.append(m.role === 'user' ? taskEl(m) : botEl(m, figNo, i === lastBot && !S.pending)));
   if (S.run) { inner.append(el('article', { class: 'turn bot', id: 'run-block' })); paintRun(); }
   if (!keepScroll || near) sheet.scrollTop = sheet.scrollHeight;
 }
@@ -567,6 +605,9 @@ async function refreshData() {
   try {
     const b = await api('/bootstrap');
     Object.assign(S, { sessions: b.sessions, sandbox: b.sandbox, providers: b.providers, usage: b.usage, models: b.models, facts: b.facts, files: b.files, audio: b.audio });
+    const resting = new Set(b.providers.filter((p) => p.dinlenen).map((p) => p.saglayici));
+    if (S.rested) for (const n of resting) if (!S.rested.has(n)) toast(n + ' kotası doldu ya da sağlayıcı yanıt vermiyor; istekler otomatik olarak diğer sağlayıcılara yönlendiriliyor.');
+    S.rested = resting;
     if (!S.models.includes(S.model)) S.model = 'auto';
     if (!S.run) S.plan = b.plan.length ? b.plan : S.plan;
     renderRail(); renderTitle(); renderDock(); renderComposer();
@@ -659,7 +700,16 @@ function bind() {
   stage.addEventListener('drop', (e) => { e.preventDefault(); depth = 0; stage.dataset.drag = 'false'; addFiles(e.dataTransfer.files); });
 
   $('#new-task').addEventListener('click', () => newTask());
-  $('#session-search').addEventListener('input', (e) => { S.search = e.target.value; renderRail(); });
+  let searchTimer = 0;
+  $('#session-search').addEventListener('input', (e) => {
+    S.search = e.target.value; S.hits = null; renderRail();
+    clearTimeout(searchTimer);
+    const q = S.search.trim();
+    if (q.length < 2) return;
+    searchTimer = setTimeout(async () => {
+      try { const d = await api('/search?q=' + encodeURIComponent(q)); if (S.search.trim() === q) { S.hits = new Set(d.ids); renderRail(); } } catch { /* baslik aramasi yeter */ }
+    }, 250);
+  });
   $('#open-settings').addEventListener('click', () => { renderSettings(); $('#settings').showModal(); });
   $('#model-btn').addEventListener('click', () => toggleModelMenu());
   $('#rail-toggle').addEventListener('click', () => setRail(true));

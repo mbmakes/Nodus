@@ -18,7 +18,7 @@ MAX_OBSERVATION = 6000   # Modele geri beslenen arac ciktisi siniri (baglam sism
 # GUVENLIK POLITIKASI
 # ------------------------------------------------------------------
 READ_ONLY = {"read_file", "list_files", "search_codebase", "solve_math", "solve_symbolic_math", "web_search", "fetch_url",
-             "update_plan", "recall", "read_document", "browse_url"}
+             "update_plan", "recall", "read_document", "browse_url", "eng_calc"}
 WORKSPACE_WRITE = {"write_file", "apply_patch", "export_report"}           # workspace kafesi tools icinde zorlanir
 CODE_EXEC = {"execute_code", "execute_python_code", "call_custom_tool", "run_file"}
 ALWAYS_ASK = {
@@ -128,7 +128,7 @@ def is_safe_action(action_info: dict, auto_exec: bool = False, tainted: bool = F
 
 def execute_with_healing(agent, action_info: dict, active_model: str, fetched_models: list,
                          user_prompt: str = "", status_box=None,
-                         auto_exec: bool = False, tainted: bool = False) -> tuple:
+                         auto_exec: bool = False, tainted: bool = False, cancel=None) -> tuple:
     """Eylemi calistirir; kod hatasinda modelin onerdigi duzeltmeyi (GUVENLIK POLITIKASINDAN GECERSE) dener."""
     exec_start_time = time.time()
     action_type = action_info.get("action", "")
@@ -139,7 +139,8 @@ def execute_with_healing(agent, action_info: dict, active_model: str, fetched_mo
     healing_attempts = 0
     repair_logs = []
 
-    while action_type in ("execute_code", "execute_python_code") and not result.get("success") and healing_attempts < 2:
+    while action_type in ("execute_code", "execute_python_code") and not result.get("success") and healing_attempts < 2 \
+            and not (cancel and cancel()):
         healing_attempts += 1
         if status_box:
             status_box.write(f"Hata yakalandı, otomatik onarım #{healing_attempts} yürütülüyor…")
@@ -290,7 +291,7 @@ def run_autonomous_workflow(agent, active_model: str, final_prompt: str, api_his
 
         action_res_text, imgs = execute_with_healing(
             agent, action, active_model, fetched_models, user_prompt=user_prompt,
-            status_box=status_box, auto_exec=auto_exec, tainted=tainted
+            status_box=status_box, auto_exec=auto_exec, tainted=tainted, cancel=cancel
         )
         if action_name in TAINTING:
             tainted = True   # artik dis kaynaklı icerik baglamda

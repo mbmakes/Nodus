@@ -127,6 +127,10 @@ KULLANABILECEGIN ARACLAR:
 18. read_document: PDF / Excel / Word / CSV belgesini okur (kullanicinin yukledikleri uploads/ altindadir). {{"filename": "uploads/dosya.pdf"}}
 19. export_report: Markdown'dan rapor uretir. Grafikleri ![aciklama](grafik.png) ile gomebilirsin (once execute_code ile .png kaydet). {{"filename": "rapor", "title": "Baslik", "content": "# Baslik ...markdown...", "format": "docx|pdf|html|md"}}
 20. browse_url: Gercek tarayicida (JavaScript calistirarak) sayfa acar; fetch_url yetmeyen dinamik sayfalar icin. {{"url": "https://...", "mode": "text|screenshot"}}
+21. eng_calc: Dogrulanmis hazir hesaplar (ONCE bunu dene; elle formul yazma). Onay gerektirmez, sonucu birimleriyle tablo olarak verir.
+   - Boru basinc kaybi: {{"calc": "pipe_pressure_drop", "params": {{"diameter_mm": 50, "length_m": 100, "flow_lps": 5, "fluid": "Water", "temperature_c": 20, "roughness_mm": 0}}}} (flow_lps yerine velocity_ms verilebilir)
+   - Kiris: {{"calc": "beam_deflection", "params": {{"support": "cantilever|simply_supported", "load": "point|udl", "length_m": 2, "load_n": 500, "w_n_per_m": 0, "E_gpa": 210, "section": "rect|hollow_square|circle", "b_mm": 40, "h_mm": 40, "t_mm": 3, "d_mm": 30}}}} (load=udl iken w_n_per_m; kesit icin yalniz gerekenleri ver)
+   - Doymus buhar tablosu: {{"calc": "steam_table", "params": {{"p_min_bar": 1, "p_max_bar": 10, "n": 10}}}}
 {plan_block}
 HAZIR KUTUPHANELER (execute_code / run_file icinde): numpy, scipy, sympy, pandas, matplotlib, fluids (akiskanlar mekanigi), CoolProp (termodinamik ozellikler), pint (birimler), anastruct (2B yapi analizi), openpyxl.
 Formulu elle yazmak yerine mumkunse bu dogrulanmis kutuphaneleri kullan; sonuclari birimleriyle ver.
@@ -417,6 +421,13 @@ EYLEM_DETAYI:
 
         if action == "browse_url":
             res = t.browse_url(_p(params, "url", "link"), _p(params, "mode", default="text"))
+            return {"success": _ok(res), "output": str(res)}
+
+        if action == "eng_calc":
+            inner = params.get("params")
+            if not isinstance(inner, dict):   # model parametreleri duz da verebilir
+                inner = {k: v for k, v in params.items() if k not in ("calc", "name", "params")}
+            res = t.eng_calc(_p(params, "calc", "name"), inner)
             return {"success": _ok(res), "output": str(res)}
 
         if action == "update_plan":

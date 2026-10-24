@@ -39,6 +39,7 @@ from orchestrator import (
     run_autonomous_workflow,
 )
 from providers import get_router, rank_models
+import tools as tools_mod
 from tools import TEXT_EXT, NodusTools, _safe_path
 
 WEB_DIR = os.path.join(BASE_DIR, "web")
@@ -200,12 +201,22 @@ def sse(job):
                              headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
-def finish(emit, s: Sess, wr: dict, user_prompt: str, status: Status, prefix: str = "", verify: bool = False):
+def finish(emit, s: Sess, wr: dict, user_prompt: str, status: Status, prefix: str = "", verify: bool = False, retry=None):
     """Is akisi sonucunu oturuma yazar; onay gerekiyorsa durumu saklar; istenirse cevabi capraz dogrular."""
+    def verifiable():
+        return verify and not wr["pending_action"] and len(wr["reply"]) > 80 and not s.cancel.is_set()
+
     reply = "\n\n".join(x for x in (prefix, wr["reply"]) if x).strip()
-    if verify and not wr["pending_action"] and len(wr["reply"]) > 80 and not s.cancel.is_set():
+    if verifiable():
         emit("status", label="Cevap bağımsız bir model tarafından doğrulanıyor…", state="running")
         ok, note = agent.verify_answer(user_prompt, wr["reply"])
+        if ok is False and retry:   # dogrulayici itiraz etti: hesabi bir kez, notu vererek yeniden yaptir
+            emit("status", label="Doğrulama farklı sonuç buldu; hesap yeniden yapılıyor…", state="running")
+            wr2 = retry(note)
+            wr.update(reply=wr2["reply"], images=wr["images"] + wr2["images"],
+                      pending_action=wr2["pending_action"], resume=wr2["resume"])
+            reply = "\n\n".join(x for x in (prefix, "*Bağımsız doğrulama ilk cevabı reddettiği için hesap yeniden yapıldı.*", wr["reply"]) if x).strip()
+            ok, note = agent.verify_answer(user_prompt, wr["reply"]) if verifiable() else (None, "")
         if ok is False:
             reply += f"\n\n**Çapraz doğrulama uyarısı:** {note}"
         elif ok is True:
@@ -283,7 +294,16 @@ def do_chat(emit, s: Sess, text, files, model_opt, auto_exec, verify_on):
         auto_exec=auto_exec, on_token=make_streamer(emit, s), cancel=s.cancel.is_set,
     )
     heavy = agent.assess_complexity(text)[0] or active_model.endswith("heavy")
-    finish(emit, s, wr, text, status, verify=verify_on and heavy)
+
+    def retry(note):
+        fix = ("[BAGIMSIZ DOGRULAMA UYARISI] Baska bir model onceki cevabini inceledi ve su sorunu buldu: " + note +
+               "\nHesabi eng_calc ya da execute_code ile yeniden yap, hatayi duzelt ve duzeltilmis nihai cevabi ver.")
+        return run_autonomous_workflow(
+            agent=agent, active_model=active_model, final_prompt=fix,
+            api_history=api_history + [{"role": "assistant", "content": wr["reply"]}], fetched_models=[],
+            user_prompt=text, status_box=status, max_steps=8, auto_exec=auto_exec,
+            on_token=make_streamer(emit, s), cancel=s.cancel.is_set)
+    finish(emit, s, wr, text, status, verify=verify_on and heavy, retry=retry)
 
 
 def do_decision(emit, s: Sess, approve, model_opt, auto_exec, verify_on):
@@ -443,7 +463,48 @@ async def stop(request):
     if not s.busy:
         return bad("Çalışan görev yok.", 409)
     s.cancel.set()
+    tools_mod.kill_active()   # calisan kod/komut varsa hemen oldur
     return JSONResponse({"ok": True})
+
+
+def report_markdown(s: Sess) -> str:
+    parts = []
+    for m in s.messages:
+        if m.get("role") == "user":
+            parts.append("## Görev\n\n" + splitlines_clean(m.get("content", "")))
+        else:
+            parts.append(clean_display_text(m.get("content", "")))
+            parts += [f"![{Path(p).name}]({p})" for p in m.get("images") or []]
+    return "\n\n".join(x for x in parts if x)
+
+
+def splitlines_clean(text: str) -> str:
+    return re.sub(r"\n*Ek: `[^`]+`", "", str(text)).strip()
+
+
+async def export_session(request):
+    body = await request.json()
+    try:
+        s = get_sess(str(body.get("sid", "")))
+    except ValueError:
+        return bad("Geçersiz sohbet kimliği.")
+    fmt = str(body.get("format", "docx"))
+    if fmt not in ("docx", "pdf"):
+        return bad("Biçim docx veya pdf olmalı.")
+    if not s.messages:
+        return bad("Rapora dökülecek bir görev yok.")
+    first = next((m["content"] for m in s.messages if m.get("role") == "user"), "Nodus raporu")
+    title = " ".join(splitlines_clean(first).split())[:80] or "Nodus raporu"
+    res = await asyncio.to_thread(tools.export_report, f"gorev_{s.sid[-4:]}", title, report_markdown(s), fmt)
+    m = re.search(r"reports/[\w\-]+\.\w+", res)
+    if not m or res.startswith("[HATA]"):
+        return bad(res.replace("[HATA] ", "")[:300] or "Rapor oluşturulamadı.", 500)
+    return JSONResponse({"path": m.group(0)})
+
+
+async def search_sessions(request):
+    q = request.query_params.get("q", "")
+    return JSONResponse({"ids": await asyncio.to_thread(sessions.search, q)})
 
 
 async def facts_add(request):
@@ -563,6 +624,8 @@ app = Starlette(
         Route("/api/chat", chat, methods=["POST"]),
         Route("/api/decision", decision, methods=["POST"]),
         Route("/api/stop", stop, methods=["POST"]),
+        Route("/api/export", export_session, methods=["POST"]),
+        Route("/api/search", search_sessions),
         Route("/api/facts", facts_add, methods=["POST"]),
         Route("/api/facts/{idx}", facts_del, methods=["DELETE"]),
         Route("/api/files", files_list),

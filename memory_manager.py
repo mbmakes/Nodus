@@ -228,6 +228,19 @@ class NodusSessions:
                 continue
         return sorted(out, key=lambda x: x["mtime"], reverse=True)
 
+    def search(self, query: str, limit: int = 30) -> list:
+        """Sohbet iceriklerinde (baslik + mesaj metni) arar; eslesen sohbet kimliklerini, yeniden eskiye dondurur."""
+        q = str(query or "").strip().lower()
+        if len(q) < 2:
+            return []
+        out = []
+        for item in self.list():
+            if any(q in str(m.get("content", "")).lower() for m in self.load(item["id"])):
+                out.append(item["id"])
+                if len(out) >= limit:
+                    break
+        return out
+
     def load(self, sid: str) -> list:
         try:
             with open(self._path(sid), "r", encoding="utf-8") as f:

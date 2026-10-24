@@ -153,3 +153,54 @@ def test_steps_are_saved_with_the_session(srv, monkeypatch):
     d = requests.get(base + f"/api/session/{sid}", headers=H).json()
     saved = d["messages"][-1]["steps"]
     assert saved[0]["tool"] == "list_files" and "ms" in saved[0] and not any(k.startswith("_") for k in saved[0])
+
+
+def test_stop_kills_running_code(srv, monkeypatch):
+    server, base = srv
+    action = 'EYLEM_DETAYI:\n{"action": "execute_code", "params": {"code": "import time\ntime.sleep(60)"}}'
+    fake_model(server, monkeypatch, [action])
+    sid = new_sid(base)
+    out = {}
+
+    def run():
+        r = requests.post(base + "/api/chat", headers=H, data={"sid": sid, "text": "uzun kod", "model": "auto", "auto_exec": "1"})
+        out["ev"] = events(r)
+    t = threading.Thread(target=run)
+    t.start()
+    for _ in range(100):   # alt surec ayaga kalkana kadar bekle
+        if server.tools_mod.ACTIVE_PROCS:
+            break
+        time.sleep(0.05)
+    assert server.tools_mod.ACTIVE_PROCS
+    t0 = time.time()
+    assert requests.post(base + "/api/stop", headers=H, json={"sid": sid}).status_code == 200
+    t.join(15)
+    assert not t.is_alive() and time.time() - t0 < 12   # 60 sn'lik uyku beklenmedi
+    assert "durduruldu" in out["ev"][-1]["message"]["content"] and not server.tools_mod.ACTIVE_PROCS
+
+
+def test_search_and_export(srv, monkeypatch):
+    server, base = srv
+    fake_model(server, monkeypatch, ["Rapor icin benzersizkelime54 iceren cevap."])
+    sid = new_sid(base)
+    events(chat(base, sid, "arama deneme gorevi"))
+    assert sid in requests.get(base + "/api/search", params={"q": "BENZERSIZKELIME54"}, headers=H).json()["ids"]
+    assert requests.get(base + "/api/search", params={"q": "x"}, headers=H).json()["ids"] == []   # cok kisa sorgu
+    r = requests.post(base + "/api/export", headers=H, json={"sid": sid, "format": "docx"})
+    assert r.status_code == 200
+    f = requests.get(base + "/api/file", params={"path": r.json()["path"], "download": "1"}, headers=H)
+    assert f.status_code == 200 and f.content[:2] == b"PK"   # docx = zip
+    assert requests.post(base + "/api/export", headers=H, json={"sid": sid, "format": "exe"}).status_code == 400
+
+
+def test_failed_verification_triggers_one_recalculation(srv, monkeypatch):
+    server, base = srv
+    first = "Ilk hesap sonucu: basinc kaybi 28.5 kPa bulundu, bu cevap yeterince uzun olsun diye aciklama ile uzatildi ve ayrintilandi."
+    fake_model(server, monkeypatch, [first, "Duzeltilmis sonuc: 110.9 kPa."])
+    verdicts = iter([(False, "28.5 kPa yanlis, dogrusu ~111 kPa"), (True, "")])
+    monkeypatch.setattr(server.agent, "verify_answer", lambda t, r: next(verdicts))
+    monkeypatch.setattr(server.agent, "assess_complexity", lambda t: (True, ""))
+    sid = new_sid(base)
+    r = requests.post(base + "/api/chat", headers=H, data={"sid": sid, "text": "boru kaybi", "model": "auto", "verify": "1"})
+    last = events(r)[-1]["message"]["content"]
+    assert "110.9 kPa" in last and "yeniden yapıldı" in last and "uyarısı" not in last and "28.5" not in last.split("yeniden yapıldı")[1]

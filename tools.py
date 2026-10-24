@@ -98,6 +98,27 @@ def _docker_cmd(inner: list) -> tuple:
     return cmd, name
 
 
+ACTIVE_PROCS = set()   # calisan alt surecler; kullanici "durdur" derse oldurulur
+
+
+def _kill_tree(p):
+    if os.name == "nt":  # shell=True'da cocuk surecleri de oldur
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture_output=True)
+    else:
+        p.kill()
+
+
+def kill_active() -> int:
+    """Calisan tum alt surecleri oldurur (durdur dugmesi). Oldurulen sayisini dondurur."""
+    procs = list(ACTIVE_PROCS)
+    for p in procs:
+        try:
+            _kill_tree(p)
+        except Exception:
+            pass
+    return len(procs)
+
+
 def _run(cmd, timeout: int, shell: bool = False, container: str = None):
     """Alt sureci workspace icinde, API anahtarlari olmadan calistirir. (returncode, stdout, stderr)"""
     p = subprocess.Popen(
@@ -105,17 +126,17 @@ def _run(cmd, timeout: int, shell: bool = False, container: str = None):
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, encoding="utf-8", errors="replace",
     )
+    ACTIVE_PROCS.add(p)
     try:
         out, err = p.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         if container:  # istemciyi oldurmek konteyneri durdurmaz
             subprocess.run(["docker", "kill", container], capture_output=True)
-        if os.name == "nt":  # shell=True'da cocuk surecleri de oldur
-            subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture_output=True)
-        else:
-            p.kill()
+        _kill_tree(p)
         p.communicate()
         raise
+    finally:
+        ACTIVE_PROCS.discard(p)
     return p.returncode, out, err
 
 
@@ -929,7 +950,17 @@ def recall(query: str, limit: int = 5) -> str:
 # 6. ARAC KAYIT DEFTERI
 # ==========================================
 
+def eng_calc(calc: str, params: dict = None) -> str:
+    """Dogrulanmis muhendislik hesabi: pipe_pressure_drop | beam_deflection | steam_table (bkz. engcalc.py)."""
+    try:
+        import engcalc
+        return engcalc.run(calc, params or {})
+    except Exception as e:
+        return ERR + f"Hesap yapilamadi: {e}"
+
+
 TOOL_REGISTRY = {
+    "eng_calc": eng_calc,
     "list_files": list_files,
     "read_file": read_file,
     "write_file": write_file,
@@ -1037,6 +1068,7 @@ class NodusTools:
     read_file_bytes = staticmethod(read_file_bytes)
     export_report = staticmethod(export_report)
     browse_url = staticmethod(browse_url)
+    eng_calc = staticmethod(eng_calc)
     sandbox_status = staticmethod(sandbox_status)
     update_plan = staticmethod(update_plan)
     remember = staticmethod(remember)
