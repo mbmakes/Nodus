@@ -5,7 +5,7 @@
 **Mühendislik hesaplarını, dosya ve araştırma işlerini kendi başına yürüten, yerel çalışan otonom yapay zeka ajanı.**
 *An autonomous, locally-run AI agent for engineering calculations, file work and research.*
 
-> **Sürüm: v1.3-beta.** Günlük kullanıma yakın ama henüz geniş çapta denenmedi. Bilinen sınırlar için [Sınırlar](#sınırlar-ve-beta-notları) bölümüne bak.
+> **Sürüm: v1.4-beta.** Günlük kullanıma yakın ama henüz geniş çapta denenmedi. Bilinen sınırlar için [Sınırlar](#sınırlar-ve-beta-notları) bölümüne bak.
 
 ![Hesap föyü: adım kaydı, denklem ve tablo](docs/img/hesap-foyu.png)
 
@@ -49,6 +49,8 @@ Hiçbir şey kurman gerekmez; Python'u da Nodus kendisi getirir.
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mbmakes/Nodus/master/install.sh | bash
 ```
+
+macOS'ta kurulum sonunda `~/Applications/Nodus.app` oluşur: Launchpad'den veya Spotlight'tan (⌘Space → Nodus) açılır, Dock'a sürüklenebilir. Uygulama bu Mac'te üretildiği için Gatekeeper uyarısı çıkmaz. Zaten kuruluysa aynı komutu yeniden çalıştırmak simgeyi ekler.
 
 **Windows** — PowerShell'i aç, yapıştır, Enter:
 

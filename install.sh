@@ -47,6 +47,8 @@ else
 fi
 
 cd "$DEST"
+# macOS: Launchpad/Dock icin Nodus.app (kurulu olanlar da komutu yeniden calistirinca alir). NODUS_NO_APP=1 ile atlanir.
+if [ "$(uname -s)" = "Darwin" ] && [ -z "${NODUS_NO_APP:-}" ] && [ -f scripts/make_app.sh ]; then bash scripts/make_app.sh || true; fi
 if [ -r /dev/tty ] && [ -z "${NODUS_YES:-}" ]; then
     exec bash run_nodus.sh < /dev/tty     # 'curl | bash' iken stdin boru; soru sorabilmek icin terminali ver
 fi
