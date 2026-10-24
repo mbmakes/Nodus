@@ -119,3 +119,5 @@ Ajan/araç davranışı, güvenlik politikası, sunucu uçları (gerçek uvicorn
 ## Lisans
 
 [MIT](LICENSE) © 2026 mbmakes
+
+İstediğin gibi kullanabilir, değiştirebilir ve paylaşabilirsin. Tek ricam: işine yaradıysa bir teşekkür (ya da depoya ⭐) yeter. Lisans metnindeki telif satırını koruman yeterli.
