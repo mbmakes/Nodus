@@ -468,6 +468,7 @@ kbd {
 @keyframes pulse { 50% { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
+  .spin { animation: spin 1.6s linear infinite !important; }   /* "Hareketi azalt" acikken bile yukleniyor gostergesi donmeli: donmezse takilmis sanilir */
 }
 
 /* ---------- Duyarli kirilimlar ---------- */

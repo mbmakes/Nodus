@@ -484,3 +484,12 @@ def test_chat_steps_record_timings_in_ui(monkeypatch):
     st.write("Çapraz doğrulama: 6.1 sn")
     notes = [x["note"] for x in st.saved_steps() if "note" in x]
     assert any("Görsel çözümleme: 4.2 sn" in n for n in notes) and any("Çapraz doğrulama" in n for n in notes)
+
+
+def test_image_prompt_is_generic_and_images_do_not_force_heavy_model():
+    import inspect
+    from agent_core import NodusAgent
+    src = inspect.getsource(NodusAgent.transcribe_engineering_image)
+    assert "ekran goruntusuyse" in src and "arama veya uydurma" in src   # teknik cizim varsayimi yok
+    heavy, score, reasons = NodusAgent().assess_complexity("Nodus ekran goruntusu\n--- [YUKLENEN GORSELIN ICERIGI (PERCEPTION)] ---\nbir sohbet penceresi")
+    assert not heavy and score == 0 and "Teknik Cizim" not in reasons
