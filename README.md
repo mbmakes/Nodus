@@ -55,10 +55,10 @@ run_nodus.bat
 git clone https://github.com/mbmakes/Nodus.git
 cd Nodus
 cp .env.example .env        # ardından .env içine anahtarlarını yaz
-./run_nodus.sh              # ya da Finder'da run_nodus.command'a çift tıkla
+bash run_nodus.sh           # Terminal'den (zip indirdiysen en güvenlisi bu)
 ```
 
-İlk açılışta `.venv` oluşturulur ve kütüphaneler oraya kurulur (Homebrew Python'u sistem genelinde `pip` kurulumunu reddettiği için). Python yoksa: `brew install python@3.12`. Sesli komut için tarayıcı mikrofon izni, ekran görüntüsü aracı için macOS "Ekran Kaydı" izni gerekebilir.
+Python **3.12** gerekir (Mac'in kendi `python3`'ü genelde eski, Homebrew'unki çok yeni olabilir): `brew install python@3.12`. Başlatıcı `python3.12`'yi kendisi bulur; farklı bir Python kullanmak için `PYTHON=python3.12 bash run_nodus.sh`. İlk açılışta `.venv` oluşturulur ve kütüphaneler oraya kurulur (ilk seferde birkaç dakika sürebilir). Zip'ten çıkardıysan ve macOS "doğrulanamadı" derse `bash run_nodus.sh` kullan; `run_nodus.command`'a çift tıklamak için önce sağ tıklayıp "Aç" demen gerekebilir. Sesli komut için tarayıcı mikrofon izni, ekran görüntüsü aracı için macOS "Ekran Kaydı" izni gerekebilir.
 
 Başlatıcılar eksik kütüphaneleri otomatik kurar, sunucuyu başlatır ve arayüzü Edge/Chrome'da uygulama penceresi olarak açar (`http://127.0.0.1:8765`); bulamazsa varsayılan tarayıcıyı kullanır.
 
