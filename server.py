@@ -118,7 +118,7 @@ def model_options() -> list:
     if time.time() - _models_cache["t"] > 300:
         _models_cache["v"] = [f"{p}::{m}" for p in router.available() for m in rank_models(router.models(p), "heavy")[:4]]
         _models_cache["t"] = time.time()
-    return ["auto", "minicpm-v (Yerel Ollama)"] + _models_cache["v"]
+    return ["auto"] + _models_cache["v"]
 
 
 def reset_conversation():
