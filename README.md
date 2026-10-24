@@ -49,7 +49,7 @@ copy .env.example .env      # ardından .env içine anahtarlarını yaz
 run_nodus.bat
 ```
 
-**macOS** *(deneysel: gerçek bir Mac'te henüz doğrulanmadı, bkz. [Sınırlar](#sınırlar-ve-beta-notları))*
+**macOS** *(GitHub'ın macOS sunucusunda otomatik testlerle doğrulandı; arayüz penceresi gerçek bir Mac'te elle denenmedi, bkz. [Sınırlar](#sınırlar-ve-beta-notları))*
 
 ```bash
 git clone https://github.com/mbmakes/Nodus.git
@@ -114,7 +114,7 @@ Ajan/araç davranışı, güvenlik politikası, sunucu uçları (gerçek uvicorn
 
 ## Sınırlar ve beta notları
 
-- **Windows**'ta denendi. **macOS desteği deneysel:** başlatıcı ve tarayıcı penceresi mantığı Mac için yazıldı, ama gerçek bir Mac'te henüz çalıştırılmadı. Sorun yaşarsan Issues'a yaz.
+- **Windows**'ta elle ve otomatik olarak denendi. **macOS:** GitHub Actions'ta (macos-latest) 50 test ve başlatıcının sunucuyu açma testi geçiyor; ancak arayüz penceresi, mikrofon ve ekran görüntüsü izinleri gerçek bir Mac'te elle denenmedi. Sorun yaşarsan Issues'a yaz.
 - Kod/komut çalıştırma, Docker kurulmadıkça işletim sistemi düzeyinde izole değildir.
 - Model hesapları hatalı olabilir; hazır hesaplar (`eng_calc`) ve çapraz doğrulama bunu azaltır ama ortadan kaldırmaz. Sonuçları kritik işlerde bağımsız doğrula.
 - Ücretsiz sağlayıcı katmanlarında kota dolabilir; Nodus yedeğe geçer ama yanıt süresi uzayabilir.
