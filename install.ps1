@@ -17,10 +17,21 @@ if (Test-Path (Join-Path $dest 'version.py')) {
 } else {
     $ref = $env:NODUS_ARCHIVE_REF
     if (-not $ref) {
-        # en yeni (on-surum dahil) surum; eski platforma ozel etiketler (-macos vb.) atlanir
-        $rel = Invoke-RestMethod "https://api.github.com/repos/$repo/releases?per_page=15" -Headers @{ 'User-Agent' = 'Nodus-installer' }
-        $ref = ($rel | Where-Object { -not $_.draft -and $_.tag_name -notmatch '-(macos|windows|linux)$' } | Select-Object -First 1).tag_name
+        # GitHub liste sirasi surum sirasi DEGIL: en buyuk surum numarasini kendimiz seciyoruz (kararli > on-surum);
+        # eski platforma ozel etiketler (-macos vb.) atlanir
+        function Get-VerKey($tag) {
+            $parts = ($tag -replace '^v', '') -split '[.-]'
+            $nums = @(); $i = 0
+            while ($i -lt $parts.Count -and $parts[$i] -match '^\d+$' -and $nums.Count -lt 4) { $nums += [int]$parts[$i]; $i++ }
+            while ($nums.Count -lt 4) { $nums += 0 }
+            $stable = if ($i -ge $parts.Count) { 1 } else { 0 }
+            return (($nums | ForEach-Object { '{0:D5}' -f $_ }) -join '') + $stable
+        }
+        $rel = Invoke-RestMethod "https://api.github.com/repos/$repo/releases?per_page=30" -Headers @{ 'User-Agent' = 'Nodus-installer' }
+        $ref = ($rel | Where-Object { -not $_.draft -and $_.tag_name -match '^v?\d' -and $_.tag_name -notmatch '-(macos|windows|linux)$' } |
+            Sort-Object { Get-VerKey $_.tag_name } -Descending | Select-Object -First 1).tag_name
         if (-not $ref) { throw 'Surum bilgisi alinamadi (internet baglantisini kontrol et).' }
+        if ($env:NODUS_DRY_RUN) { Write-Host "REF=$ref"; return }
     }
     Write-Host "Surum indiriliyor: $ref"
     $tmp = Join-Path $env:TEMP ('nodus_' + [guid]::NewGuid().ToString('N'))

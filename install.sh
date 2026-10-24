@@ -18,11 +18,19 @@ else
     done
     REF="${NODUS_ARCHIVE_REF:-}"
     if [ -z "$REF" ]; then
-        # en yeni (on-surum dahil) surum; eski platforma ozel etiketler (-macos vb.) atlanir
-        REF=$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=15" \
-            | grep -o '"tag_name": *"[^"]*"' | sed 's/.*: *"\(.*\)"/\1/' | grep -v -E -- '-(macos|windows|linux)$' | head -1) || true
+        # GitHub liste sirasi surum sirasi DEGIL: en buyuk surum numarasini kendimiz seciyoruz (kararli > on-surum);
+        # eski platforma ozel etiketler (-macos vb.) atlanir. NODUS_RELEASES_JSON_FILE: test icin yerel liste.
+        if [ -n "${NODUS_RELEASES_JSON_FILE:-}" ]; then JSON=$(cat "$NODUS_RELEASES_JSON_FILE")
+        else JSON=$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=30") || JSON=""; fi
+        REF=$(printf '%s' "$JSON" | grep -o '"tag_name": *"[^"]*"' | sed 's/.*: *"\(.*\)"/\1/' | grep -v -E -- '-(macos|windows|linux)$' \
+            | awk '{ v=$0; sub(/^v/, "", v); n=split(v, p, /[.-]/); c=0; i=1
+                     while (i<=n && p[i] ~ /^[0-9]+$/ && c<4) { num[++c]=p[i]; i++ }
+                     for (j=c+1; j<=4; j++) num[j]=0
+                     printf "%05d%05d%05d%05d%d %s\n", num[1], num[2], num[3], num[4], (i>n ? 1 : 0), $0 }' \
+            | sort -r | head -1 | awk '{print $2}') || true
         [ -n "$REF" ] || { echo "[HATA] Surum bilgisi alinamadi (internet baglantisini kontrol et)."; exit 1; }
     fi
+    if [ -n "${NODUS_DRY_RUN:-}" ]; then echo "REF=$REF"; exit 0; fi   # test: indirmeden yalnizca secilen surumu yaz
     echo "Surum indiriliyor: $REF"
     TMP=$(mktemp -d)
     trap 'rm -rf "$TMP"' EXIT

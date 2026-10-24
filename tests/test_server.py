@@ -408,3 +408,25 @@ def test_server_starts_when_stdout_cannot_encode_turkish(tmp_path):
             p.wait(5)
         except Exception:
             p.kill()
+
+
+def test_install_script_picks_highest_version_not_first_in_list(tmp_path):
+    """GitHub release listesi surum sirasinda degildir (v1.1.1 en basta, v1.2 ikinci geldi); betik en buyugunu secmeli."""
+    import shutil, subprocess
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("bash yok")
+    tags = ["v1.1.1-beta", "v1.2-beta", "v1.1-beta", "v1.0-beta-macos", "v1.0-beta", "v1.10-beta", "v1.9", "notaversion"]
+    f = tmp_path / "rel.json"
+    f.write_text(json.dumps([{"tag_name": t, "draft": False} for t in tags]))
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def pick(tag_list):
+        f.write_text(json.dumps([{"tag_name": t} for t in tag_list]))
+        env = {**os.environ, "NODUS_RELEASES_JSON_FILE": str(f), "NODUS_DRY_RUN": "1", "NODUS_HOME": str(tmp_path / "nope")}
+        r = subprocess.run([bash, "install.sh"], cwd=root, env=env, capture_output=True, text=True, timeout=60)
+        return r.stdout.strip().splitlines()[-1] if r.stdout.strip() else r.stderr[-300:]
+    assert pick(tags) == "REF=v1.10-beta"                                        # 1.10 > 1.9 (sayisal siralama)
+    assert pick(["v1.1.1-beta", "v1.2-beta", "v1.1-beta"]) == "REF=v1.2-beta"
+    assert pick(["v1.2-beta", "v1.2"]) == "REF=v1.2"                             # kararli, on-surumden buyuk
+    assert pick(["v1.0-beta-macos", "v1.0-beta"]) == "REF=v1.0-beta"             # platforma ozel etiket atlanir
