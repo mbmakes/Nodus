@@ -6,6 +6,7 @@ import json
 import mimetypes
 import os
 import queue
+import re
 import socket
 import subprocess
 import threading
@@ -30,6 +31,7 @@ from starlette.staticfiles import StaticFiles
 from agent_core import ALLOWED_IMAGE_MIME, NodusAgent
 from memory_manager import NodusMemory, NodusNotes, NodusSessions
 from orchestrator import (
+    Cancelled,
     clean_display_text,
     describe_action,
     execute_with_healing,
@@ -60,6 +62,7 @@ class Sess:
         self.sid, self.messages = sid, messages
         self.pending = self.resume = self.meta = None
         self.busy = False
+        self.cancel = threading.Event()
 
 
 STATE = {}
@@ -89,7 +92,10 @@ def display(msg: dict) -> dict:
     content = msg.get("content", "")
     if msg.get("role") == "assistant":
         content = clean_display_text(content)
-    return {"role": msg.get("role", "user"), "content": content, "images": msg.get("images") or []}
+    out = {"role": msg.get("role", "user"), "content": content, "images": msg.get("images") or []}
+    if msg.get("steps"):
+        out["steps"] = msg["steps"]
+    return out
 
 
 def pending_payload(s: Sess):
@@ -127,19 +133,38 @@ class Status:
 
     def __init__(self, emit):
         self.emit = emit
+        self.steps = []   # oturuma kaydedilen adim zaman cizelgesi
+
+    def _close(self):
+        last = self.steps[-1] if self.steps else None
+        if last and last.get("tool") and "ms" not in last:
+            last["ms"] = int((time.time() - last.pop("_t0")) * 1000)
 
     def write(self, text):
-        self.emit("step", text=str(text))
+        text = str(text)
+        self._close()
+        m = re.match(r"Adım (\d+)/\d+: `([^`]+)`", text)
+        if m:
+            self.steps.append({"n": int(m[1]), "tool": m[2], "_t0": time.time()})
+        else:
+            self.steps.append({"note": re.sub(r"[`*]", "", text).strip()[:200], "warn": bool(re.search(r"hata|onar", text, re.I))})
+        self.emit("step", text=text)
         self.emit("plan", steps=list(tools.plan))
+
+    def saved_steps(self):
+        self._close()
+        return [{k: v for k, v in s.items() if not k.startswith("_")} for s in self.steps][:40]
 
     def update(self, label=None, state=None, expanded=None):
         self.emit("status", label=label, state=state)
 
 
-def make_streamer(emit):
+def make_streamer(emit, s: "Sess"):
     last = [0.0]
 
     def on_token(text: str):
+        if s.cancel.is_set():
+            raise Cancelled()
         if time.time() - last[0] < 0.08 and text:
             return
         last[0] = time.time()
@@ -175,17 +200,17 @@ def sse(job):
                              headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
-def finish(emit, s: Sess, wr: dict, user_prompt: str, prefix: str = "", verify: bool = False):
+def finish(emit, s: Sess, wr: dict, user_prompt: str, status: Status, prefix: str = "", verify: bool = False):
     """Is akisi sonucunu oturuma yazar; onay gerekiyorsa durumu saklar; istenirse cevabi capraz dogrular."""
     reply = "\n\n".join(x for x in (prefix, wr["reply"]) if x).strip()
-    if verify and not wr["pending_action"] and len(wr["reply"]) > 80:
+    if verify and not wr["pending_action"] and len(wr["reply"]) > 80 and not s.cancel.is_set():
         emit("status", label="Cevap bağımsız bir model tarafından doğrulanıyor…", state="running")
         ok, note = agent.verify_answer(user_prompt, wr["reply"])
         if ok is False:
             reply += f"\n\n**Çapraz doğrulama uyarısı:** {note}"
         elif ok is True:
             reply += "\n\n*Bağımsız model doğrulaması: tutarlı.*"
-    msg = {"role": "assistant", "content": reply, "images": rel_images(wr["images"])}
+    msg = {"role": "assistant", "content": reply, "images": rel_images(wr["images"]), "steps": status.saved_steps()}
     s.messages.append(msg)
     if wr["pending_action"]:
         s.pending, s.resume, s.meta = wr["pending_action"], wr["resume"], {"user_prompt": user_prompt}
@@ -251,13 +276,14 @@ def do_chat(emit, s: Sess, text, files, model_opt, auto_exec, verify_on):
 
     api_history = [{"role": m["role"], "content": m["content"]} for m in memory.get_recent_messages()[-10:]]
     api_history.append({"role": "user", "content": final_prompt})
+    status = Status(emit)
     wr = run_autonomous_workflow(
         agent=agent, active_model=active_model, final_prompt=final_prompt, api_history=api_history,
-        fetched_models=[], user_prompt=text, status_box=Status(emit), max_steps=12,
-        auto_exec=auto_exec, on_token=make_streamer(emit),
+        fetched_models=[], user_prompt=text, status_box=status, max_steps=12,
+        auto_exec=auto_exec, on_token=make_streamer(emit, s), cancel=s.cancel.is_set,
     )
     heavy = agent.assess_complexity(text)[0] or active_model.endswith("heavy")
-    finish(emit, s, wr, text, verify=verify_on and heavy)
+    finish(emit, s, wr, text, status, verify=verify_on and heavy)
 
 
 def do_decision(emit, s: Sess, approve, model_opt, auto_exec, verify_on):
@@ -282,13 +308,14 @@ def do_decision(emit, s: Sess, approve, model_opt, auto_exec, verify_on):
             {"role": "assistant", "content": resume["response"]},
             {"role": "user", "content": obs},
         ]
+        status = Status(emit)
         wr = run_autonomous_workflow(
             agent=agent, active_model=active_m, final_prompt=obs, api_history=history, fetched_models=[],
-            user_prompt=meta.get("user_prompt", ""), status_box=Status(emit), auto_exec=auto_exec, tainted=tainted,
-            on_token=make_streamer(emit),
+            user_prompt=meta.get("user_prompt", ""), status_box=status, auto_exec=auto_exec, tainted=tainted,
+            on_token=make_streamer(emit, s), cancel=s.cancel.is_set,
         )
         wr["images"] = imgs + wr["images"]
-        finish(emit, s, wr, meta.get("user_prompt", "[Kritik Eylem Onaylandi]"), prefix=res_text, verify=verify_on)
+        finish(emit, s, wr, meta.get("user_prompt", "[Kritik Eylem Onaylandi]"), status, prefix=res_text, verify=verify_on)
     else:
         msg = {"role": "assistant", "content": res_text, "images": rel_images(imgs)}
         s.messages.append(msg)
@@ -377,6 +404,7 @@ async def chat(request):
 
     def job(emit):
         s.busy = True
+        s.cancel.clear()
         try:
             do_chat(emit, s, text, files, model_opt, auto_exec, verify_on)
         finally:
@@ -399,11 +427,23 @@ async def decision(request):
 
     def job(emit):
         s.busy = True
+        s.cancel.clear()
         try:
             do_decision(emit, s, approve, model_opt, auto_exec, verify_on)
         finally:
             s.busy = False
     return sse(job)
+
+
+async def stop(request):
+    try:
+        s = get_sess(str((await request.json()).get("sid", "")))
+    except ValueError:
+        return bad("Geçersiz sohbet kimliği.")
+    if not s.busy:
+        return bad("Çalışan görev yok.", 409)
+    s.cancel.set()
+    return JSONResponse({"ok": True})
 
 
 async def facts_add(request):
@@ -522,6 +562,7 @@ app = Starlette(
         Route("/api/session/{sid}", delete_session, methods=["DELETE"]),
         Route("/api/chat", chat, methods=["POST"]),
         Route("/api/decision", decision, methods=["POST"]),
+        Route("/api/stop", stop, methods=["POST"]),
         Route("/api/facts", facts_add, methods=["POST"]),
         Route("/api/facts/{idx}", facts_del, methods=["DELETE"]),
         Route("/api/files", files_list),

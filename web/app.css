@@ -263,8 +263,8 @@ kbd {
 .prose .katex-display { margin: 1.1em 0; overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
 .prose .katex { font-size: 1.06em; }
 
-.table-wrap { overflow-x: auto; margin: 1.1em 0; border: 1px solid var(--rule2); border-radius: 10px; }
-.prose table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
+.table-wrap { overflow-x: auto; margin: 1.1em 0; border: 1px solid var(--rule2); border-radius: 10px; width: fit-content; max-width: 100%; }
+.prose table { border-collapse: collapse; width: auto; min-width: min(100%, 360px); font-size: 14px; font-variant-numeric: tabular-nums; }
 .prose th { font: 600 13.5px var(--font-cond); text-align: left; background: var(--wash); padding: 9px 14px; border-bottom: 1px solid var(--rule2); white-space: nowrap; }
 .prose td { padding: 8px 14px; border-bottom: 1px solid var(--rule); }
 .prose tr:last-child td { border-bottom: 0; }
@@ -342,6 +342,9 @@ kbd {
 .send:disabled { background: var(--wash2); color: var(--mute); cursor: not-allowed; }
 .send svg { width: 20px; height: 20px; }
 .send[data-run="true"] { background: var(--ink); }
+.send .ico-stop { display: none; }
+.send[data-run="true"] .ico-stop { display: block; }
+.send[data-run="true"] svg:not(.ico-stop) { display: none; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px 0; }
 .chips:empty { display: none; }
 .chip button { border: 0; background: none; padding: 0; color: var(--mute); line-height: 1; font-size: 15px; }

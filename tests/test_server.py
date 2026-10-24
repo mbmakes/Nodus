@@ -114,3 +114,42 @@ def test_file_endpoints_are_confined(srv):
         assert requests.get(base + "/api/file", params={"path": p}, headers=H).status_code == 404, p
         assert requests.get(base + "/api/file/text", params={"path": p}, headers=H).status_code == 404, p
     assert requests.get(base + "/api/session/..%5C..%5Cx", headers=H).status_code in (400, 404)
+
+
+def test_stop_cancels_running_task(srv, monkeypatch):
+    server, base = srv
+    started = threading.Event()
+    calls = []
+
+    def slow_model(model_name, prompt_content="", history=None, available_models=None, on_token=None):
+        calls.append(1)
+        started.set()
+        for _ in range(100):   # akis suruyor; durdurma token geri cagrisinda yakalanir
+            time.sleep(0.05)
+            on_token("yaziyorum")
+        return "bitti"
+    monkeypatch.setattr(server.agent, "call_model", slow_model)
+    monkeypatch.setattr(server.agent, "select_best_model", lambda p, m=None: ("auto:fast", "test"))
+    sid = new_sid(base)
+    out = {}
+    t = threading.Thread(target=lambda: out.update(ev=events(chat(base, sid, "uzun is"))))
+    t.start()
+    assert started.wait(5)
+    assert requests.post(base + "/api/stop", headers=H, json={"sid": sid}).status_code == 200
+    t.join(10)
+    assert not t.is_alive() and len(calls) == 1
+    last = out["ev"][-1]
+    assert last["type"] == "final" and "durduruldu" in last["message"]["content"]
+    assert requests.post(base + "/api/stop", headers=H, json={"sid": sid}).status_code == 409   # artik calisan yok
+
+
+def test_steps_are_saved_with_the_session(srv, monkeypatch):
+    server, base = srv
+    action = 'EYLEM_DETAYI:\n{"action": "list_files", "params": {}}'
+    fake_model(server, monkeypatch, [action, "Dosyalar listelendi."])
+    sid = new_sid(base)
+    last = events(chat(base, sid, "dosyalari goster"))[-1]
+    assert [s["tool"] for s in last["message"]["steps"]] == ["list_files"]
+    d = requests.get(base + f"/api/session/{sid}", headers=H).json()
+    saved = d["messages"][-1]["steps"]
+    assert saved[0]["tool"] == "list_files" and "ms" in saved[0] and not any(k.startswith("_") for k in saved[0])

@@ -88,7 +88,7 @@ function toast(msg) {
 // ------------------------------------------------------------------ markdown
 function mdToHtml(src) {
   const math = [];
-  const guarded = String(src).replace(/\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)/g, (m) => { math.push(m); return `@@M${math.length - 1}@@`; });
+  const guarded = String(src).replace(/\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|\$(?=[^\s$])[^$\n]*?[^\s$]\$(?!\d)|\$[^\s$]\$/g, (m) => { math.push(m); return `@@M${math.length - 1}@@`; });
   const html = DOMPurify.sanitize(marked.parse(guarded, { gfm: true, breaks: true }));
   return html.replace(/@@M(\d+)@@/g, (_, i) => esc(math[+i]));
 }
@@ -123,7 +123,7 @@ function enhance(root, final) {
   });
   if (final && window.renderMathInElement) {
     renderMathInElement(root, {
-      delimiters: [{ left: '$$', right: '$$', display: true }, { left: '\\[', right: '\\]', display: true }, { left: '\\(', right: '\\)', display: false }],
+      delimiters: [{ left: '$$', right: '$$', display: true }, { left: '\\[', right: '\\]', display: true }, { left: '\\(', right: '\\)', display: false }, { left: '$', right: '$', display: false }],
       throwOnError: false,
     });
   }
@@ -345,7 +345,7 @@ function finishRun(ev) {
   const steps = S.run.steps;
   S.run = null; S.busy = false;
   const m = ev.message;
-  if (m && (m.content || (m.images && m.images.length))) S.msgs.push({ ...m, steps });
+  if (m && (m.content || (m.images && m.images.length))) S.msgs.push({ steps, ...m });
   S.pending = ev.pending || null;
   renderAll();
   // uzun cevap: okuma cevabin basindan baslasin; kisa cevap: altta kalsin
@@ -378,6 +378,12 @@ async function sendText(text) {
   files.forEach((f) => fd.append('files', f, f.name));
   try { await stream('/chat', fd, false); } catch (e) { toast(e.message); }
   endStreamFallback();
+}
+
+async function stopRun() {
+  if (!S.run || S.run.stopping) return;
+  S.run.stopping = true; S.run.label = 'Durduruluyor…'; schedulePaint();
+  try { await post('/stop', { sid: S.sid }); } catch (e) { S.run.stopping = false; toast(e.message); }
 }
 
 async function decide(approve) {
@@ -415,7 +421,11 @@ function renderComposer() {
   const c = $('#composer');
   c.dataset.locked = String(locked);
   $('#prompt').placeholder = S.pending ? 'Önce bekleyen işlemi onayla veya reddet…' : S.busy ? 'Görev çalışıyor…' : 'Görevi yaz…';
-  $('#send').disabled = locked || !($('#prompt').value.trim() || S.attach.length);
+  const send = $('#send'), running = S.busy && !S.pending;
+  send.disabled = running ? false : locked || !($('#prompt').value.trim() || S.attach.length);
+  send.dataset.run = String(running);
+  send.setAttribute('aria-label', running ? 'Görevi durdur' : 'Gönder');
+  send.title = running ? 'Görevi durdur' : 'Gönder';
   $('#opt-verify').setAttribute('aria-pressed', String(S.verify));
   $('#opt-auto').setAttribute('aria-pressed', String(S.autoExec));
   $('#mic').hidden = !S.audio;
@@ -626,7 +636,11 @@ function bind() {
   prompt.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('#composer').requestSubmit(); }
   });
-  $('#composer').addEventListener('submit', (e) => { e.preventDefault(); if (!$('#send').disabled) sendText(prompt.value); });
+  $('#composer').addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (S.busy) return stopRun();
+    if (!$('#send').disabled) sendText(prompt.value);
+  });
   $('#attach').addEventListener('click', () => $('#file-input').click());
   $('#file-input').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
   $('#mic').addEventListener('click', toggleMic);

@@ -8,6 +8,10 @@ from agent_core import extract_action
 
 tools = NodusTools()
 
+class Cancelled(BaseException):
+    """Kullanici gorevi durdurdu. BaseException: saglayici katmanindaki `except Exception` bunu yutmasin."""
+
+
 MAX_OBSERVATION = 6000   # Modele geri beslenen arac ciktisi siniri (baglam sismesini onler)
 
 # ------------------------------------------------------------------
@@ -138,7 +142,7 @@ def execute_with_healing(agent, action_info: dict, active_model: str, fetched_mo
     while action_type in ("execute_code", "execute_python_code") and not result.get("success") and healing_attempts < 2:
         healing_attempts += 1
         if status_box:
-            status_box.write(f"⚠️ Hata yakalandi, otomatik onarim #{healing_attempts} yurutuluyor...")
+            status_box.write(f"Hata yakalandı, otomatik onarım #{healing_attempts} yürütülüyor…")
 
         stderr_msg = result.get("stderr", result.get("output", "")).strip()[:3000]
         failed_code = str(params.get("code", ""))[:6000]
@@ -150,9 +154,9 @@ def execute_with_healing(agent, action_info: dict, active_model: str, fetched_mo
         if heal_action and heal_action.get("action") == "execute_code":
             allowed, why = is_safe_action(heal_action, auto_exec, tainted)
             if not allowed:  # onarim kodu onaylanmadigi icin calistirilmaz
-                repair_logs.append(f"⚠️ Onarim kodu onay gerektirdigi icin calistirilmadi ({why})")
+                repair_logs.append(f"**Uyarı:** Onarım kodu onay gerektirdiği için çalıştırılmadı ({why})")
                 break
-            repair_logs.append(f"⚠️ **Onarim #{healing_attempts}:** Kod guncellendi.")
+            repair_logs.append(f"**Onarım #{healing_attempts}:** Kod güncellendi.")
             params = heal_action.get("params") or {}
             result = agent.execute_approved_action(heal_action)
         else:
@@ -180,36 +184,37 @@ def execute_with_healing(agent, action_info: dict, active_model: str, fetched_mo
         ) if user_prompt else f"Su arama sonuclarini kisaca ozetle (URL'leri koru):\n{search_raw}"
         out_text = agent.call_model(active_model, summary_prompt, [], fetched_models)
     elif action_type == "write_file":
-        out_text = f"✅ **`{params.get('filename') or params.get('filepath') or params.get('path')}`**: {result.get('output', '')}"
+        out_text = f"**`{params.get('filename') or params.get('filepath') or params.get('path')}`** yazıldı: {result.get('output', '')}"
     elif action_type == "apply_patch":
-        out_text = f"{'✅' if result.get('success') else '❌'} **`{params.get('filename') or params.get('filepath') or params.get('path')}`**: {result.get('output', '')}"
+        out_text = f"**`{params.get('filename') or params.get('filepath') or params.get('path')}`** {'yama uygulandı' if result.get('success') else 'yama uygulanamadı'}: {result.get('output', '')}"
     elif action_type == "read_file":
         fname = params.get('filename') or params.get('filepath') or params.get('path')
-        out_text = f"📄 **`{fname}` icerigi:**\n```\n{result.get('output', '')}\n```" if result.get("success") else f"❌ `{fname}` okunamadi: {result.get('output', '')}"
+        out_text = f"**`{fname}` içeriği:**\n```\n{result.get('output', '')}\n```" if result.get("success") else f"**Hata:** `{fname}` okunamadı: {result.get('output', '')}"
     elif action_type == "list_files":
         files = result.get("files", [])
-        out_text = "📂 **Calisma Dosyalari:**\n" + "\n".join([f"- `{f}`" for f in files]) if files else "📂 Calisma alani bos."
+        out_text = "**Çalışma dosyaları:**\n" + "\n".join([f"- `{f}`" for f in files]) if files else "Çalışma alanı boş."
     elif action_type == "search_codebase":
-        out_text = f"🔍 **Arama Sonuclari:**\n{result.get('output', '')}"
+        out_text = f"**Arama sonuçları:**\n{result.get('output', '')}"
     elif action_type in ["solve_math", "solve_symbolic_math"]:
-        out_text = f"{'✅' if result.get('success') else '❌'} **Analitik Cozum:**\n{result.get('output', '')}"
+        out_text = f"**{'Analitik çözüm' if result.get('success') else 'Analitik çözüm başarısız'}:**\n{result.get('output', '')}"
     elif action_type == "self_improve":
-        out_text = f"🛠 **Otonom Gelistirme:**\n\n{result.get('output', '')}"
+        out_text = f"**Otonom geliştirme:**\n\n{result.get('output', '')}"
     elif action_type in ("execute_code", "execute_python_code", "run_shell", "run_file"):
         stdout = result.get("stdout", "").strip()
+        stdout = re.sub(r"^Basarili Cikti:\s*", "", stdout).replace("Komut hatasiz calisti.", "").strip()   # arac ciktisinin ASCII on eki
         stderr = result.get("stderr", "").strip()
-        out_text = (f"{log_prefix}⚙️ **Calistirma Basarili:**\n```\n{stdout if stdout else 'Kod hatasiz calisti.'}\n```"
+        out_text = (f"{log_prefix}**Çalıştırma başarılı:**\n```\n{stdout if stdout else 'Kod hatasız çalıştı.'}\n```"
                     if result.get("success")
-                    else f"{log_prefix}❌ **Hata:**\n```\n{stderr if stderr else result.get('output', '')}\n```")
+                    else f"{log_prefix}**Hata:**\n```\n{stderr if stderr else result.get('output', '')}\n```")
     else:  # fetch_url, delete_file, call_custom_tool ... : ciktiyi oldugu gibi goster
-        out_text = f"{'✅' if result.get('success') else '❌'} {result.get('output', 'Islem tamamlandi.')}"
+        out_text = f"{'' if result.get('success') else '**Hata:** '}{result.get('output', 'İşlem tamamlandı.')}"
 
     return out_text, generated_images
 
 
 def run_autonomous_workflow(agent, active_model: str, final_prompt: str, api_history: list, fetched_models: list,
                             user_prompt: str, status_box=None, max_steps: int = 12,
-                            auto_exec: bool = False, tainted: bool = False, on_token=None) -> dict:
+                            auto_exec: bool = False, tainted: bool = False, on_token=None, cancel=None) -> dict:
     """Nodus'un kullanici araya girmeden gorevi bastan sona bitirmesini saglayan ReAct dongusu.
     Onay gerektiren bir eylemde durur ve 'resume' ile devam ettirilebilir durum dondurur."""
     step = 0
@@ -222,11 +227,24 @@ def run_autonomous_workflow(agent, active_model: str, final_prompt: str, api_his
     def result(reply, pending=None, resume=None):
         return {"reply": reply, "images": all_generated_images, "pending_action": pending, "resume": resume}
 
+    def stopped():
+        collected_explanations.append("*Görev kullanıcı tarafından durduruldu.*")
+        if status_box:
+            status_box.update(label="Durduruldu", state="complete", expanded=False)
+        return result("\n\n".join(collected_explanations))
+
     while step < max_steps:
+        if cancel and cancel():
+            return stopped()
         step += 1
 
         history_chain = compact_history(history_chain)
-        response = agent.call_model(active_model, current_turn_prompt, history_chain, fetched_models, on_token=on_token)
+        try:
+            response = agent.call_model(active_model, current_turn_prompt, history_chain, fetched_models, on_token=on_token)
+        except Cancelled:
+            return stopped()
+        if cancel and cancel():
+            return stopped()
         action = agent.parse_action(response)
         user_explanation = clean_display_text(response)
 
@@ -241,13 +259,13 @@ def run_autonomous_workflow(agent, active_model: str, final_prompt: str, api_his
 
         action_name = action.get("action", "")
         if status_box:
-            status_box.write(f"⚙️ Adım {step}/{max_steps}: `{action_name}` yürütülüyor...")
+            status_box.write(f"Adım {step}/{max_steps}: `{action_name}` yürütülüyor…")
 
         # Ayni eylemin tekrar tekrar denenmesini (sonsuz dongu) kes
         key = json.dumps(action, sort_keys=True, ensure_ascii=False)
         seen_actions[key] = seen_actions.get(key, 0) + 1
         if seen_actions[key] >= 3:
-            collected_explanations.append(f"⚠️ `{action_name}` ayni parametrelerle 3 kez denendi; dongu durduruldu.")
+            collected_explanations.append(f"**Uyarı:** `{action_name}` aynı parametrelerle 3 kez denendi; döngü durduruldu.")
             break
 
         history_chain.append({"role": "assistant", "content": response})

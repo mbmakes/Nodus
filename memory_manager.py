@@ -200,7 +200,8 @@ class NodusSessions:
 
     def save(self, sid: str, messages: list):
         clean = [{"role": m.get("role", "user"), "content": str(m.get("content", ""))[:20000],
-                  **({"images": [x for x in m["images"] if isinstance(x, str)][:20]} if m.get("images") else {})}
+                  **({"images": [x for x in m["images"] if isinstance(x, str)][:20]} if m.get("images") else {}),
+                  **({"steps": [x for x in m["steps"] if isinstance(x, dict)][:40]} if m.get("steps") else {})}
                  for m in messages if m.get("content")][-self.MAX_MESSAGES:]
         if not clean:
             return
