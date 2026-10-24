@@ -849,7 +849,34 @@ function bind() {
   });
 }
 
+// Tek sekme: Nodus simgesine her tiklama yeni sekme acar; ikinci sekme baska sekmenin acik oldugunu fark edip sorar.
+let tabChannel = null, tabIsDup = false;
+function otherTabOpen() {
+  if (!('BroadcastChannel' in window)) return Promise.resolve(false);
+  tabChannel = new BroadcastChannel('nodus-tab');
+  tabChannel.addEventListener('message', (e) => { if (e.data === 'hello' && !tabIsDup) tabChannel.postMessage('taken'); });
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(false), 400);
+    tabChannel.addEventListener('message', (e) => { if (e.data === 'taken') { clearTimeout(t); resolve(true); } });
+    tabChannel.postMessage('hello');
+  });
+}
+function askDuplicateTab() {
+  tabIsDup = true;
+  return new Promise((resolve) => {
+    const box = el('div', { class: 'dup-tab', role: 'alertdialog', 'aria-label': 'Nodus başka sekmede açık' },
+      el('div', { class: 'dup-card' },
+        el('h2', { text: 'Nodus zaten başka bir sekmede açık' }),
+        el('p', { text: 'Aynı anda tek sekmede kullanmak en iyisi. Diğer sekmeye geçebilir ya da burayı kullanabilirsin.' }),
+        el('div', { class: 'dup-actions' },
+          el('button', { class: 'btn', text: 'Bu sekmeyi kapat', onclick: () => { window.close(); toast('Sekme kapanmadı; tarayıcıdan kapat (⌘W / Ctrl+W).'); } }),
+          el('button', { class: 'btn btn-ink', text: 'Burada kullan', onclick: () => { tabIsDup = false; box.remove(); resolve(); } }))));
+    document.body.append(box);
+  });
+}
+
 async function boot() {
+  if (await otherTabOpen()) await askDuplicateTab();
   const saved = LS.get('dock', null);
   setDock(saved === null ? innerWidth > 1180 : saved === '1' && innerWidth > 1180);
   bind();

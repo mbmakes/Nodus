@@ -489,3 +489,10 @@ kbd {
   .tb-sandbox span { display: none; }
   .opts { display: none; }
 }
+
+/* Ikinci sekme uyarisi */
+.dup-tab { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: var(--bg); padding: 16px; }
+.dup-card { width: min(440px, 100%); display: grid; gap: 12px; }
+.dup-card h2 { margin: 0; font: 600 22px/1.2 var(--font-cond); }
+.dup-card p { margin: 0; color: var(--ink2); font-size: 15px; line-height: 1.5; }
+.dup-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
