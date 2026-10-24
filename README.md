@@ -5,7 +5,7 @@
 **Mühendislik hesaplarını, dosya ve araştırma işlerini kendi başına yürüten, yerel çalışan otonom yapay zeka ajanı.**
 *An autonomous, locally-run AI agent for engineering calculations, file work and research.*
 
-> **Sürüm: v1.6-beta.** Günlük kullanıma yakın ama henüz geniş çapta denenmedi. Bilinen sınırlar için [Sınırlar](#sınırlar-ve-beta-notları) bölümüne bak.
+> **Sürüm: v1.6.1-beta.** Günlük kullanıma yakın ama henüz geniş çapta denenmedi. Bilinen sınırlar için [Sınırlar](#sınırlar-ve-beta-notları) bölümüne bak.
 
 ![Hesap föyü: adım kaydı, denklem ve tablo](docs/img/hesap-foyu.png)
 
