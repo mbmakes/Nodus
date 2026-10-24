@@ -11,6 +11,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import webbrowser
@@ -42,6 +43,8 @@ from orchestrator import (
 )
 from providers import get_router, rank_models
 import tools as tools_mod
+import updater
+from version import __version__
 from tools import TEXT_EXT, NodusTools, _safe_path
 
 WEB_DIR = os.path.join(BASE_DIR, "web")
@@ -358,7 +361,106 @@ def flag(v) -> bool:
 
 
 async def ping(request):
-    return JSONResponse({"app": "nodus"})
+    return JSONResponse({"app": "nodus", "version": __version__})
+
+
+# ------------------------------------------------------------------
+# Uygulama ici guncelleme (GitHub release'leri). Tarayici yalnizca bu sunucuya baglanir; GitHub'a sunucu gider.
+# ------------------------------------------------------------------
+UPDATE_TARGET = BASE_DIR   # testlerde gecici klasore cevrilir
+UPDATE_TTL = 1800
+UPDATE = {"state": "idle", "step": "", "message": "", "version": ""}   # idle | running | done | error
+_update_cache = {"t": 0.0, "info": None}
+
+
+def update_disabled() -> bool:
+    return bool(os.getenv("NODUS_NO_UPDATE_CHECK"))
+
+
+def cached_update_info(force: bool = False) -> dict:
+    if not force and _update_cache["info"] and time.time() - _update_cache["t"] < UPDATE_TTL:
+        return _update_cache["info"]
+    info = updater.check(__version__)
+    _update_cache.update(t=time.time(), info=info)
+    return info
+
+
+def _port_free(port: int) -> bool:
+    with socket.socket() as s:
+        try:
+            s.bind(("127.0.0.1", port))
+            return True
+        except OSError:
+            return False
+
+
+def schedule_restart(delay: float = 0.8):
+    """Yeni sureci ayri baslatir (eskisi portu birakana kadar bekler), sonra bu sureci kapatir."""
+    env = {**os.environ, "NODUS_WAIT_PORT": "1", "NODUS_NO_WINDOW": "1"}
+    kw = {"creationflags": 0x00000008 | 0x00000200 | 0x08000000} if os.name == "nt" else {"start_new_session": True}
+    subprocess.Popen([sys.executable, os.path.join(BASE_DIR, "server.py")], cwd=BASE_DIR, env=env, close_fds=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
+    threading.Timer(delay, os._exit, args=(0,)).start()
+
+
+def run_update(info: dict):
+    step = lambda t: UPDATE.update(step=t)
+    try:
+        latest, warnings = info["latest"], []
+        if updater.install_mode(UPDATE_TARGET) == "git":
+            step("Yeni sürüm indiriliyor (git)…")
+            updater.git_update(latest["tag"], UPDATE_TARGET)
+        else:
+            step("Yeni sürüm indiriliyor…")
+            with tempfile.TemporaryDirectory() as td:
+                zpath = os.path.join(td, "nodus.zip")
+                updater.download_zip(latest["zipball"], zpath)
+                step("Dosyalar uygulanıyor…")
+                updater.apply_zip(zpath, UPDATE_TARGET)
+        step("Kütüphaneler denetleniyor…")
+        ok, tail = updater.install_requirements(UPDATE_TARGET)
+        if not ok:
+            warnings.append(f"Bazı kütüphaneler kurulamadı ({tail}); Nodus açılmazsa run_nodus başlatıcısını bir kez çalıştır.")
+        UPDATE.update(state="done", step="Yeniden başlatılıyor…", message=" ".join(warnings), version=latest["version"])
+        schedule_restart()
+    except Exception as e:
+        msg = str(e) if isinstance(e, updater.UpdateError) else f"{type(e).__name__}: {e}"
+        UPDATE.update(state="error", step="", message=agent._redact(msg)[:500])
+
+
+async def update_check(request):
+    if update_disabled():
+        return JSONResponse({"disabled": True, "current": __version__, "available": False})
+    try:
+        info = await asyncio.to_thread(cached_update_info, request.query_params.get("force") == "1")
+    except Exception as e:   # internet yok / GitHub yanit vermedi: arayuz sessiz kalir
+        return JSONResponse({"current": __version__, "available": False, "error": type(e).__name__})
+    out = dict(info, mode=updater.install_mode(UPDATE_TARGET))
+    if out.get("latest"):
+        out["latest"] = {k: v for k, v in out["latest"].items() if k != "zipball"}
+    return JSONResponse(out)
+
+
+async def update_start(request):
+    if update_disabled():
+        return bad("Güncelleme denetimi kapalı.", 403)
+    if UPDATE["state"] == "running":
+        return bad("Güncelleme zaten sürüyor.", 409)
+    if any(s.busy for s in STATE.values()):
+        return bad("Çalışan bir görev var; bitince ya da durdurunca güncelle.", 409)
+    try:
+        info = await asyncio.to_thread(cached_update_info, True)
+    except Exception:
+        return bad("Güncelleme bilgisi alınamadı (internet bağlantısını kontrol et).", 502)
+    if not info["available"]:
+        return bad("Zaten en güncel sürümdesin.", 409)
+    UPDATE.update(state="running", step="Başlıyor…", message="", version="")
+    threading.Thread(target=run_update, args=(info,), daemon=True).start()
+    return JSONResponse({"ok": True})
+
+
+async def update_status(request):
+    return JSONResponse(UPDATE)
 
 
 async def bootstrap(request):
@@ -373,6 +475,7 @@ async def bootstrap(request):
         "files": tools.list_files(),
         "plan": list(tools.plan),
         "audio": bool(router._key("groq")),
+        "version": __version__,
     })
 
 
@@ -416,6 +519,8 @@ async def chat(request):
         return bad("Önce bekleyen işlemi onaylayın veya reddedin.", 409)
     if s.busy:
         return bad("Bu sohbette bir görev zaten çalışıyor.", 409)
+    if UPDATE["state"] in ("running", "done"):
+        return bad("Nodus güncelleniyor; birazdan yeniden açılacak.", 409)
     text = str(form.get("text", "")).strip()
     files = []
     for f in form.getlist("files"):
@@ -628,6 +733,9 @@ app = Starlette(
         Route("/api/stop", stop, methods=["POST"]),
         Route("/api/export", export_session, methods=["POST"]),
         Route("/api/search", search_sessions),
+        Route("/api/update/check", update_check),
+        Route("/api/update/status", update_status),
+        Route("/api/update", update_start, methods=["POST"]),
         Route("/api/facts", facts_add, methods=["POST"]),
         Route("/api/facts/{idx}", facts_del, methods=["DELETE"]),
         Route("/api/files", files_list),
@@ -698,6 +806,11 @@ def main():
     import uvicorn
     port = int(os.getenv("NODUS_PORT", "8765"))
     url = f"http://127.0.0.1:{port}"
+    if os.getenv("NODUS_WAIT_PORT"):   # guncelleme sonrasi yeniden baslatma: eski surec portu birakana kadar bekle
+        for _ in range(100):
+            if _port_free(port):
+                break
+            time.sleep(0.3)
     if _nodus_running(port):   # zaten calisiyor: yalnizca pencereyi ac
         open_window(url)
         return

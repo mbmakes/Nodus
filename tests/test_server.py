@@ -223,3 +223,98 @@ def test_unix_launchers_use_lf_line_endings():
     for name in ("run_nodus.sh", "run_nodus.command"):
         data = open(os.path.join(root, name), "rb").read()
         assert data.startswith(b"#!/usr/bin/env bash\n") and b"\r" not in data, name   # CRLF macOS'ta "bad interpreter" verir
+
+
+# ---------------------------------------------------------------- guncelleme
+def _fake_release(version="1.1-beta"):
+    return {"current": "1.0-beta", "available": True, "latest": {
+        "tag": "v" + version, "version": version, "name": "Nodus v" + version, "notes": "## Yenilikler\n- bir sey",
+        "url": "https://example.test/r", "published": "2026-10-24T00:00:00Z", "zipball": "https://api.github.com/zip"}}
+
+
+def _reset_update(server):
+    server.UPDATE.update(state="idle", step="", message="", version="")
+    server._update_cache.update(t=0.0, info=None)
+
+
+def test_ping_reports_version_and_update_check_hides_download_url(srv, monkeypatch):
+    server, base = srv
+    _reset_update(server)
+    assert requests.get(base + "/api/ping").json()["version"] == server.__version__
+    monkeypatch.setattr(server.updater, "check", lambda current: _fake_release())
+    d = requests.get(base + "/api/update/check?force=1", headers=H).json()
+    assert d["available"] and d["latest"]["version"] == "1.1-beta" and "zipball" not in d["latest"] and d["mode"] in ("zip", "git")
+    monkeypatch.setenv("NODUS_NO_UPDATE_CHECK", "1")
+    assert requests.get(base + "/api/update/check", headers=H).json()["disabled"]
+    assert requests.post(base + "/api/update", headers=H).status_code == 403
+
+
+def test_update_check_survives_network_failure(srv, monkeypatch):
+    server, base = srv
+    _reset_update(server)
+
+    def boom(current):
+        raise ConnectionError("internet yok")
+    monkeypatch.setattr(server.updater, "check", boom)
+    d = requests.get(base + "/api/update/check?force=1", headers=H).json()
+    assert d["available"] is False and d["error"] == "ConnectionError"
+
+
+def test_update_applies_files_keeps_data_and_restarts(srv, monkeypatch, tmp_path):
+    import zipfile
+    server, base = srv
+    _reset_update(server)
+    target = tmp_path / "install"
+    target.mkdir()
+    (target / "server.py").write_text("eski")
+    (target / ".env").write_text("GEMINI_API_KEY=gizli")
+    zpath = tmp_path / "rel.zip"
+    with zipfile.ZipFile(zpath, "w") as z:
+        z.writestr("o-Nodus-abc/version.py", '__version__ = "1.1-beta"\n')
+        z.writestr("o-Nodus-abc/server.py", "yeni")
+        z.writestr("o-Nodus-abc/.env", "EZMEMELI")
+    restarted = []
+    monkeypatch.setattr(server, "UPDATE_TARGET", str(target))
+    monkeypatch.setattr(server.updater, "check", lambda current: _fake_release())
+    monkeypatch.setattr(server.updater, "download_zip", lambda url, dest: open(dest, "wb").write(zpath.read_bytes()))
+    monkeypatch.setattr(server.updater, "install_requirements", lambda t: (True, ""))
+    monkeypatch.setattr(server, "schedule_restart", lambda: restarted.append(1))
+    assert requests.post(base + "/api/update", headers=H).status_code == 200
+    for _ in range(100):
+        st = requests.get(base + "/api/update/status", headers=H).json()
+        if st["state"] != "running":
+            break
+        time.sleep(0.1)
+    assert st["state"] == "done" and st["version"] == "1.1-beta" and restarted == [1]
+    assert (target / "server.py").read_text() == "yeni" and (target / ".env").read_text() == "GEMINI_API_KEY=gizli"
+    assert chat(base, new_sid(base), "merhaba").status_code == 409      # guncelleme bitti, yeniden baslamayi bekliyor
+    _reset_update(server)
+
+
+def test_update_refused_when_task_running_or_already_current_or_failing(srv, monkeypatch, tmp_path):
+    server, base = srv
+    _reset_update(server)
+    monkeypatch.setattr(server, "UPDATE_TARGET", str(tmp_path))
+    monkeypatch.setattr(server.updater, "check", lambda current: _fake_release())
+    sid = new_sid(base)
+    server.STATE[sid].busy = True
+    try:
+        assert requests.post(base + "/api/update", headers=H).status_code == 409      # gorev calisirken guncelleme yok
+    finally:
+        server.STATE[sid].busy = False
+    cur = _fake_release(); cur["available"] = False
+    monkeypatch.setattr(server.updater, "check", lambda current: cur)
+    assert requests.post(base + "/api/update", headers=H).status_code == 409          # zaten guncel
+    monkeypatch.setattr(server.updater, "check", lambda current: _fake_release())
+
+    def fail(url, dest):
+        raise server.updater.UpdateError("Izin verilmeyen indirme adresi.")
+    monkeypatch.setattr(server.updater, "download_zip", fail)
+    assert requests.post(base + "/api/update", headers=H).status_code == 200
+    for _ in range(100):
+        st = requests.get(base + "/api/update/status", headers=H).json()
+        if st["state"] != "running":
+            break
+        time.sleep(0.1)
+    assert st["state"] == "error" and "Izin verilmeyen" in st["message"]
+    _reset_update(server)

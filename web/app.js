@@ -47,7 +47,7 @@ const S = {
   sid: null, sessions: [], msgs: [], pending: null, busy: false, run: null,
   models: ['auto'], model: LS.get('model', 'auto'), verify: LS.get('verify', '1') === '1', autoExec: false,
   facts: [], files: [], plan: [], sandbox: { ok: false, why: '' }, providers: [], usage: [], audio: false,
-  attach: [], tab: LS.get('tab', 'out'), preview: null, search: '', hits: null, rested: null,
+  attach: [], tab: LS.get('tab', 'out'), preview: null, search: '', hits: null, rested: null, version: '', update: null,
 };
 
 // ------------------------------------------------------------------ ag
@@ -589,6 +589,9 @@ function renderSettings() {
         el('thead', {}, el('tr', {}, ['Sağlayıcı', 'İstek', 'Token', '429', 'Kalan istek'].map((h) => el('th', { text: h })))),
         el('tbody', {}, S.usage.map((u) => el('tr', {}, [u.saglayici, u.istek, u.token, u['429'], u.kalan_istek].map((c) => el('td', { text: String(c) })))))) : el('p', { text: 'Anahtarı tanımlı sağlayıcı yok.' }),
       el('p', { style: 'margin-top:8px', text: 'Kalan kota, sağlayıcının yanıt başlıklarından okunur; ilk istekten sonra dolar.' })),
+    el('section', { class: 'set-sec' }, el('h3', { text: 'Sürüm' }),
+      el('p', { text: `Nodus ${S.version || '—'}. Güncelleme denetimi GitHub'a bağlanır; NODUS_NO_UPDATE_CHECK=1 ile kapatılır.` }),
+      el('div', { class: 'row-btns' }, el('button', { class: 'btn', type: 'button', text: 'Güncellemeleri denetle', onclick: manualUpdateCheck }))),
     el('section', { class: 'set-sec' }, el('h3', { text: 'Veriler' }), el('p', { text: 'Bu işlemler geri alınamaz.' }),
       el('div', { class: 'row-btns' },
         el('button', { class: 'btn btn-danger', type: 'button', text: 'Bu görevi sil', onclick: () => { $('#settings').close(); removeSession(S.sid, true); } }),
@@ -604,7 +607,7 @@ async function resetAll() {
 async function refreshData() {
   try {
     const b = await api('/bootstrap');
-    Object.assign(S, { sessions: b.sessions, sandbox: b.sandbox, providers: b.providers, usage: b.usage, models: b.models, facts: b.facts, files: b.files, audio: b.audio });
+    Object.assign(S, { sessions: b.sessions, sandbox: b.sandbox, providers: b.providers, usage: b.usage, models: b.models, facts: b.facts, files: b.files, audio: b.audio, version: b.version || S.version });
     const resting = new Set(b.providers.filter((p) => p.dinlenen).map((p) => p.saglayici));
     if (S.rested) for (const n of resting) if (!S.rested.has(n)) toast(n + ' kotası doldu ya da sağlayıcı yanıt vermiyor; istekler otomatik olarak diğer sağlayıcılara yönlendiriliyor.');
     S.rested = resting;
@@ -641,6 +644,71 @@ async function removeSession(id, skipConfirm) {
     await api('/session/' + id, { method: 'DELETE' });
     if (id === S.sid) await newTask(); else refreshData();
   } catch (e) { toast(e.message); }
+}
+
+// ------------------------------------------------------------------ guncelleme
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const upd = { busy: false, text: '', error: '' };
+
+async function checkUpdate(force) {
+  try { return await api('/update/check' + (force ? '?force=1' : '')); } catch { return null; }
+}
+
+function paintUpdate() {
+  const info = S.update, l = info.latest, body = $('#update-body');
+  const notes = el('div', { class: 'prose upd-notes' });
+  notes.innerHTML = mdToHtml(l.notes || 'Bu sürüm için güncelleme notu yok.');
+  enhance(notes, true);
+  body.replaceChildren(
+    el('p', { class: 'upd-line' }, el('b', { text: 'Nodus ' + l.version }), ` yayınlandı. Şu an ${info.current} sürümünü kullanıyorsun.`),
+    el('h3', { class: 'upd-h', text: 'Güncelleme notları' }), notes,
+    ...(upd.error ? [el('p', { class: 'upd-err', role: 'alert', text: upd.error })] : []),   // replaceChildren(null) "null" yazar
+    upd.busy
+      ? el('div', { class: 'status-line' }, el('i', { class: 'spin' }), upd.text)
+      : el('p', { class: 'upd-ask', text: 'Şimdi güncellemek ister misin? Anahtarların, görevlerin ve notların korunur; Nodus kısa süre yeniden başlar.' }),
+    el('div', { class: 'row-btns' },
+      el('button', { class: 'btn btn-ink', type: 'button', disabled: upd.busy, text: upd.error ? 'Yeniden dene' : 'Şimdi güncelle', onclick: runUpdate }),
+      el('button', { class: 'btn', type: 'button', disabled: upd.busy, text: 'Sonra', onclick: () => $('#update').close() })));
+}
+
+function showUpdate(info) {
+  S.update = info; upd.error = ''; upd.busy = false;
+  paintUpdate();
+  if (!$('#update').open) $('#update').showModal();
+}
+
+async function runUpdate() {
+  const info = S.update;
+  upd.busy = true; upd.error = ''; upd.text = 'Güncelleme başlatılıyor…'; paintUpdate();
+  try { await post('/update'); } catch (e) { upd.busy = false; upd.error = e.message; return paintUpdate(); }
+  for (;;) {
+    await sleep(700);
+    let s;
+    try { s = await api('/update/status'); } catch { break; }   // sunucu yeniden basladi
+    if (s.state === 'error') { upd.busy = false; upd.error = s.message || 'Güncelleme başarısız oldu.'; return paintUpdate(); }
+    upd.text = s.step || upd.text; paintUpdate();
+    if (s.state === 'done') { if (s.message) toast(s.message); upd.text = 'Yeniden başlatılıyor…'; paintUpdate(); break; }
+  }
+  const t0 = Date.now();
+  for (;;) {   // yeni surum yanit verene kadar bekle, sonra sayfayi yenile
+    await sleep(1000);
+    try { const p = await api('/ping'); if (p.version && p.version !== info.current) return location.reload(); } catch { /* yeniden basliyor */ }
+    if (Date.now() - t0 > 120000) { upd.busy = false; upd.error = "Yeniden başlatma beklenenden uzun sürdü. Nodus'u kapatıp yeniden aç."; return paintUpdate(); }
+  }
+}
+
+async function manualUpdateCheck() {
+  const d = await checkUpdate(true);
+  if (!d || d.error) return toast("GitHub'a ulaşılamadı; internet bağlantını kontrol et.");
+  if (d.disabled) return toast('Güncelleme denetimi kapalı (NODUS_NO_UPDATE_CHECK).');
+  if (d.available) { $('#settings').close(); return showUpdate(d); }
+  toast(`Nodus güncel (${d.current}).`);
+}
+
+async function checkUpdateOnOpen() {
+  await sleep(1200);
+  const d = await checkUpdate(false);
+  if (d && d.available && !S.busy) showUpdate(d);
 }
 
 // ------------------------------------------------------------------ ses kaydi
@@ -716,6 +784,7 @@ function bind() {
   $('#dock-toggle').addEventListener('click', () => setDock(!dockOpen()));
   $('#scrim').addEventListener('click', () => { setRail(false); if (innerWidth <= 1180) setDock(false); });
   $$('.tabs [role=tab]').forEach((t) => t.addEventListener('click', () => { S.tab = t.dataset.tab; LS.set('tab', S.tab); renderDock(); }));
+  $('#update').addEventListener('cancel', (e) => { if (upd.busy) e.preventDefault(); });
   $('#lightbox').addEventListener('click', (e) => { if (e.target.id === 'lightbox') e.currentTarget.close(); });
   $('#settings').addEventListener('click', (e) => { if (e.target.id === 'settings') e.currentTarget.close(); });
 
@@ -732,6 +801,7 @@ async function boot() {
   bind();
   try {
     await newTask(true);
+    checkUpdateOnOpen();
   } catch (e) { toast('Sunucuya ulaşılamadı.'); }
 }
 boot();
