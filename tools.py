@@ -59,7 +59,7 @@ def _safe_path(filepath: str) -> str:
         p = os.sep.join(parts) or "."
     full = os.path.realpath(os.path.join(WORKSPACE_DIR, p))
     if not Path(full).is_relative_to(Path(WORKSPACE_DIR)):
-        raise ValueError(f"'{filepath}' calisma alani disinda; erisim engellendi.")
+        raise ValueError(f"'{filepath}' calisma alani disinda; erisim engellendi. (Masaustu/Belgeler/Indirilenler'e yazmak icin save_user_file, uygulama acmak icin open_app kullan.)")
     return full
 
 
@@ -959,7 +959,80 @@ def eng_calc(calc: str, params: dict = None) -> str:
         return ERR + f"Hesap yapilamadi: {e}"
 
 
+# ==========================================
+# KULLANICI KLASORLERI VE UYGULAMA ACMA
+# ==========================================
+# Workspace kafesi bilerek siki; ama kullanici "masaustune yaz" / "uygulamayi ac" diyebilmeli. Tum ev klasorunu acmak yerine
+# yalniz bu uc klasore yazma ve ayri bir 'ac' araci var; ikisi de onay politikasina bagli (orchestrator.USER_ACTIONS).
+_USER_FOLDERS = {"desktop": ("Desktop", "OneDrive/Desktop", "Masaüstü", "OneDrive/Masaüstü"),
+                 "documents": ("Documents", "OneDrive/Documents", "Belgeler", "OneDrive/Belgeler"),
+                 "downloads": ("Downloads", "İndirilenler")}
+_FOLDER_ALIASES = {"masaüstü": "desktop", "masaustu": "desktop", "belgeler": "documents", "indirilenler": "downloads", "indirilen": "downloads"}
+
+
+def user_folder(name: str = "desktop") -> str:
+    """Masaustu/Belgeler/Indirilenler klasorunun gercek yolu (yerellestirilmis ad ya da OneDrive olabilir). Bulunamazsa ValueError."""
+    key = str(name or "desktop").strip().lower()
+    key = _FOLDER_ALIASES.get(key, key)
+    if key not in _USER_FOLDERS:
+        raise ValueError(f"folder su degerlerden biri olmali: {sorted(_USER_FOLDERS)}")
+    home = Path.home()
+    for cand in _USER_FOLDERS[key]:
+        if (home / cand).is_dir():
+            return str(home / cand)
+    raise ValueError(f"'{key}' klasoru {home} altinda bulunamadi.")
+
+
+def save_user_file(folder: str, filename: str, content: str, overwrite=False) -> str:
+    """Masaustu/Belgeler/Indirilenler klasorune METIN dosyasi yazar (workspace disina yazmanin tek yolu). Var olan dosyanin uzerine yalniz overwrite=true ile yazar."""
+    try:
+        base = os.path.realpath(user_folder(folder))
+        rel = str(filename or "").strip().strip("\"'")
+        if not rel or os.path.isabs(rel) or ":" in rel:
+            raise ValueError("filename goreli bir ad olmali (ornek: not.txt ya da Proje/not.txt).")
+        full = os.path.realpath(os.path.join(base, rel))
+        if full == base or not Path(full).is_relative_to(Path(base)):
+            raise ValueError("Yol klasorun disina cikamaz.")
+        content = str(content)
+        if len(content) > MAX_FILE:
+            return ERR + "Icerik cok buyuk."
+        if os.path.exists(full) and str(overwrite).strip().lower() not in ("1", "true", "evet", "yes"):
+            return ERR + f"'{full}' zaten var; uzerine yazmak icin overwrite=true ver ya da baska ad sec."
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w", encoding="utf-8") as f:
+            f.write(content)
+        return f"Yazildi: {full}"
+    except Exception as e:
+        return ERR + f"Dosya yazma hatasi: {e}"
+
+
+def open_app(target: str) -> str:
+    """Uygulama, dosya ya da web adresi acar (macOS: open, Windows: start, Linux: xdg-open). Uygulamanin kapanmasini BEKLEMEZ (run_shell'de GUI uygulamasi zaman asiminda oldurulurdu)."""
+    t = str(target or "").strip().strip("\"'")
+    if not t or "\n" in t or len(t) > 500:
+        return ERR + "'target' bos ya da gecersiz (uygulama adi, dosya yolu veya http(s) adresi ver)."
+    try:
+        if sys.platform == "darwin":
+            expanded = os.path.expanduser(t)
+            is_url = t.startswith(("http://", "https://"))
+            by_path = is_url or os.path.exists(expanded)
+            r = subprocess.run(["open", t if is_url else expanded] if by_path else ["open", "-a", t],
+                               capture_output=True, text=True, timeout=15, env=scrubbed_env())
+            if r.returncode != 0:
+                return ERR + f"Acilamadi: {(r.stderr or r.stdout).strip() or 'uygulama bulunamadi'}"
+        elif os.name == "nt":
+            os.startfile(t)   # noqa: S606 - yol, adres ya da kayitli uygulama adi (notepad, chrome...)
+        else:
+            cmd = [t] if shutil.which(t) else ["xdg-open", t]
+            subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True, env=scrubbed_env())
+        return f"'{t}' acildi."
+    except Exception as e:
+        return ERR + f"Acilamadi: {e}"
+
+
 TOOL_REGISTRY = {
+    "save_user_file": save_user_file,
+    "open_app": open_app,
     "eng_calc": eng_calc,
     "list_files": list_files,
     "read_file": read_file,
@@ -1069,6 +1142,9 @@ class NodusTools:
     export_report = staticmethod(export_report)
     browse_url = staticmethod(browse_url)
     eng_calc = staticmethod(eng_calc)
+    save_user_file = staticmethod(save_user_file)
+    open_app = staticmethod(open_app)
+    user_folder = staticmethod(user_folder)
     sandbox_status = staticmethod(sandbox_status)
     update_plan = staticmethod(update_plan)
     remember = staticmethod(remember)

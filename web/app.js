@@ -26,7 +26,7 @@ const fileUrl = (p, dl) => '/api/file?path=' + encodeURIComponent(p) + (dl ? '&d
 const secs = (ms) => (ms < 1000 ? '<1 sn' : Math.round(ms / 1000) + ' sn');
 
 const TOOL_LABEL = {
-  execute_code: 'Kod çalıştır', execute_python_code: 'Kod çalıştır', run_file: 'Dosya çalıştır', run_shell: 'Komut çalıştır',
+  execute_code: 'Kod çalıştır', execute_python_code: 'Kod çalıştır', run_file: 'Dosya çalıştır', run_shell: 'Komut çalıştır', open_app: 'Uygulama aç', save_user_file: 'Dosya yaz (masaüstü vb.)',
   web_search: 'Web araması', fetch_url: 'Sayfa oku', browse_url: 'Tarayıcıda aç', read_file: 'Dosya oku', write_file: 'Dosya yaz',
   list_files: 'Dosyaları listele', apply_patch: 'Yama uygula', search_codebase: 'Dosyalarda ara', solve_math: 'Sembolik çözüm',
   solve_symbolic_math: 'Sembolik çözüm', read_document: 'Belge oku', export_report: 'Rapor üret', delete_file: 'Dosya sil',

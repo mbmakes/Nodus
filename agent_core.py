@@ -9,19 +9,27 @@ from tools import NodusTools, ERR
 from memory_manager import NodusMemory
 from providers import get_router, is_banned_model, rank_models
 
+def _desk() -> str:
+    try:
+        from tools import user_folder
+        return f" Masaustu: {user_folder('desktop')}."
+    except Exception:
+        return ""
+
+
 def _system_block() -> str:
     """Modele hangi bilgisayarda calistigini ve o isletim sisteminin sistem araclarini soyler."""
     import platform
     home = os.path.expanduser("~")
     sysname = platform.system()
     if sysname == "Darwin":
-        return (f"- Calistigin bilgisayar: macOS {platform.mac_ver()[0]}, ev klasoru {home}. Kabuk: zsh/bash. Yararli araclar: open, osascript, defaults, killall, mdfind, pbcopy.\n"
+        return (f"- Calistigin bilgisayar: macOS {platform.mac_ver()[0]}, ev klasoru {home}.{_desk()} Kabuk: zsh/bash. Yararli araclar: open, osascript, defaults, killall, mdfind, pbcopy.\n"
                 f"- Dock'a uygulama eklemek icin: defaults write com.apple.dock persistent-apps -array-add "
                 f"'<dict><key>tile-data</key><dict><key>file-data</key><dict><key>_CFURLString</key><string>/Users/KULLANICI/Applications/Nodus.app</string>"
                 f"<key>_CFURLStringType</key><integer>0</integer></dict></dict></dict>' && killall Dock (yolu gercek uygulama yoluyla degistir).")
     if sysname == "Windows":
-        return f"- Calistigin bilgisayar: Windows {platform.release()}, ev klasoru {home}. Kabuk: cmd.exe; PowerShell icin 'powershell -NoProfile -Command ...' kullan."
-    return f"- Calistigin bilgisayar: {sysname} {platform.release()}, ev klasoru {home}. Kabuk: sh/bash."
+        return f"- Calistigin bilgisayar: Windows {platform.release()}, ev klasoru {home}.{_desk()} Kabuk: cmd.exe; PowerShell icin 'powershell -NoProfile -Command ...' kullan."
+    return f"- Calistigin bilgisayar: {sysname} {platform.release()}, ev klasoru {home}.{_desk()} Kabuk: sh/bash."
 
 
 def vision_order(models: list) -> list:
@@ -158,7 +166,11 @@ GUVENLIK KURALLARI (ASLA ISTISNASI YOKTUR):
 
 KULLANICININ BILGISAYARINDA ISLEM (SISTEM ERISIMI):
 {_system_block()}
-- Kullanici bilgisayarinda bir sey yapmani isterse (uygulama acma, Dock/ayar degistirme, calisma alani disindaki dosyalar, kurulum) "yapamam" DEME; run_shell ile yap. Komut her zaman kullanici onayindan gecer; onay penceresinde ne yapacagini kisaca acikla.
+- Kullanici bilgisayarinda bir sey yapmani isterse "yapamam" DEME: uygulama acmak icin open_app, masaustu/belgeler/indirilenlere dosya yazmak icin save_user_file, digerleri (Dock/ayar degistirme, baska klasorler, kurulum) icin run_shell veya execute_code kullan. Hepsi kullanici onayindan gecer (onaysiz modda gecmez); onay penceresinde ne yapacagini kisaca acikla. Workspace'i arama, kullanici "masaustu" dediyse masaustu yolunu kullan.
+
+KENDIN HAKKINDA (kullanici soruyorsa dogru bilgi ver):
+- Guncel bilgi (haber, fiyat, kur, yeni cikan seyler, bugunun olaylari) icin tahmin yurutme; web_search/fetch_url ile bak.
+- Kendini kalici olarak guncelleyemezsin; guncelleme kullanicinin Ayarlar > Guncellemeleri denetle dugmesiyle yapilir. Ileri duzey/karmasik hesaplarda eng_calc ve capraz dogrulama gibi dogrulama araclarini kullan.
 - sudo/yonetici yetkisi, sistem dosyalarini silme, .env ve API anahtarlarina dokunma: ancak kullanici acikca isterse. Geri alinamayan bir sey yapmadan once ne olacagini soyle.
 
 KULLANABILECEGIN ARACLAR:
@@ -193,6 +205,8 @@ KULLANABILECEGIN ARACLAR:
    - Mil burulmasi: {{"calc": "shaft_torsion", "params": {{"power_kw": 15, "rpm": 1450, "d_mm": 40, "length_m": 0.5}}}} (power_kw+rpm yerine torque_nm; length_m verilirse burulma acisi da hesaplanir)
    - Civata kontrolu: {{"calc": "bolt_check", "params": {{"size": "M12", "grade": "8.8", "axial_n": 20000, "shear_n": 5000, "n_bolts": 4}}}} (size M6-M30 ya da area_mm2; sinif 4.6-12.9)
    - Duvardan isi gecisi: {{"calc": "wall_heat", "params": {{"layers": [{{"thickness_mm": 200, "k_wm": 0.8}}, {{"thickness_mm": 50, "k_wm": 0.035}}], "t_in_c": 20, "t_out_c": -5, "h_in": 10, "h_out": 25, "area_m2": 12}}}}
+22. save_user_file: Masaustu/Belgeler/Indirilenler klasorune METIN dosyasi yazar (write_file yalniz workspace'tedir; masaustune yazmak icin BUNU kullan, workspace arama). Onay gerekir. {{"folder": "desktop|documents|downloads", "filename": "not.txt", "content": "icerik", "overwrite": false}}
+23. open_app: Uygulama, dosya ya da web adresi acar ve beklemez. Onay gerekir. {{"target": "Safari"}} (macOS uygulama adi; Windows: notepad, chrome; dosya yolu ya da https://... adresi de olur)
 {plan_block}
 HAZIR KUTUPHANELER (execute_code / run_file icinde): numpy, scipy, sympy, pandas, matplotlib, fluids (akiskanlar mekanigi), CoolProp (termodinamik ozellikler), pint (birimler), anastruct (2B yapi analizi), openpyxl.
 Formulu elle yazmak yerine mumkunse bu dogrulanmis kutuphaneleri kullan; sonuclari birimleriyle ver.
@@ -436,6 +450,15 @@ EYLEM_DETAYI:
             res = t.run_python_file(_p(params, "filename", "filepath", "path"))
             ok = _ok(res)
             return {"success": ok, "stdout": str(res) if ok else "", "stderr": "" if ok else str(res), "output": str(res)}
+
+        if action == "open_app":
+            res = t.open_app(_p(params, "target", "app", "name", "url", "path"))
+            return {"success": _ok(res), "output": str(res)}
+
+        if action == "save_user_file":
+            res = t.save_user_file(_p(params, "folder", default="desktop"), _p(params, "filename", "filepath", "path"),
+                                   _p(params, "content", "text"), _p(params, "overwrite", default=False))
+            return {"success": _ok(res), "output": str(res)}
 
         if action == "run_shell":
             res = t.run_shell(_p(params, "command", "cmd"))

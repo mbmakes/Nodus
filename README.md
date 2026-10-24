@@ -5,7 +5,7 @@
 **Mühendislik hesaplarını, dosya ve araştırma işlerini kendi başına yürüten, yerel çalışan otonom yapay zeka ajanı.**
 *An autonomous, locally-run AI agent for engineering calculations, file work and research.*
 
-> **Sürüm: v1.7-beta.** Günlük kullanıma yakın ama henüz geniş çapta denenmedi. Bilinen sınırlar için [Sınırlar](#sınırlar-ve-beta-notları) bölümüne bak.
+> **Sürüm: v1.8-beta.** Günlük kullanıma yakın ama henüz geniş çapta denenmedi. Bilinen sınırlar için [Sınırlar](#sınırlar-ve-beta-notları) bölümüne bak.
 
 ![Hesap föyü: adım kaydı, denklem ve tablo](docs/img/hesap-foyu.png)
 
@@ -131,7 +131,7 @@ Tarayıcı (web/)  ──SSE──►  server.py (Starlette)
 ```
 
 - **ReAct döngüsü:** model bir araç çağırır, sonucu görür, devam eder; en fazla 12 adım. Aynı eylem 3 kez tekrarlanırsa döngü kesilir.
-- **Araçlar:** `eng_calc`, `execute_code`, `solve_math`, `web_search`, `fetch_url`, `browse_url`, `read_document`, `read_file`/`write_file`/`apply_patch`, `export_report`, `update_plan`, `remember`/`recall` ve dahası.
+- **Araçlar:** `eng_calc`, `open_app`, `save_user_file`, `execute_code`, `solve_math`, `web_search`, `fetch_url`, `browse_url`, `read_document`, `read_file`/`write_file`/`apply_patch`, `export_report`, `update_plan`, `remember`/`recall` ve dahası.
 - **Hafıza:** kalıcı kurallar ("SI birim sistemi kullan"), notlar (SQLite) ve sohbet geçmişi yerel `memory/` klasöründe.
 
 ![Başlangıç ekranı ve şablonlar](docs/img/baslangic.png)

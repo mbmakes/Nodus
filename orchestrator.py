@@ -24,8 +24,11 @@ CODE_EXEC = {"execute_code", "execute_python_code", "call_custom_tool", "run_fil
 ALWAYS_ASK = {
     "run_shell": "Kabuk komutu calistirilmak isteniyor.",
     "delete_file": "Dosya silinmek isteniyor.",
+    "open_app": "Bir uygulama, dosya ya da adres acilmak isteniyor.",
+    "save_user_file": "Calisma alani disina (Masaustu/Belgeler/Indirilenler) dosya yazilmak isteniyor.",
     "self_improve": "Sisteme kalici yeni kod eklenmek isteniyor (bu surece yuklenecek).",
 }
+USER_ACTIONS = {"run_shell", "open_app", "save_user_file"}   # kullanicinin bilgisayarinda is yapan araclar: "onaysiz calistir" aciksa onaysiz
 PERSISTENT_WRITE = {"remember"}   # kalici hafizaya yazar; dis icerik okunduktan sonra onay ister (kalici enjeksiyon riski)
 TAINTING = {"web_search", "fetch_url", "browse_url", "read_document"}   # dis kaynakli icerik getiren araclar
 KNOWN_ACTIONS = READ_ONLY | WORKSPACE_WRITE | CODE_EXEC | PERSISTENT_WRITE | set(ALWAYS_ASK)
@@ -79,6 +82,11 @@ def describe_action(action_info: dict) -> tuple:
     name, p = action_info.get("action", ""), action_info.get("params") or {}
     if name == "run_shell":
         return str(p.get("command", "")), "bat"
+    if name == "open_app":
+        return str(p.get("target") or p.get("app") or p.get("name") or p.get("url") or p.get("path") or ""), "bat"
+    if name == "save_user_file":
+        head = f"{p.get('folder', 'desktop')}/{p.get('filename', '')}" + (" (var olan dosyanin USTUNE YAZILIR)" if str(p.get("overwrite", "")).lower() in ("1", "true", "evet", "yes") else "")
+        return f"# {head}{chr(10)}{chr(10)}{str(p.get('content', ''))[:4000]}", "text"
     if name == "run_file":
         fname = p.get("filename") or p.get("filepath") or p.get("path") or ""
         return f"# {fname}" + chr(10) + str(tools.read_file(fname)), "python"
@@ -131,7 +139,7 @@ def is_safe_action(action_info: dict, auto_exec: bool = False, tainted: bool = F
 
     # "Kodu onaysiz calistir" aciksa kabuk komutu da onaysiz: onaysiz Python zaten her komutu calistirabilir, ayri onay guvenlik katmaz.
     # Silme ve kalici kod ekleme (self_improve) yine sorulur; internetten icerik okunduysa da sorulur.
-    if action == "run_shell" and auto_exec and not tainted:
+    if action in USER_ACTIONS and auto_exec and not tainted:
         return True, ""
 
     if action in ALWAYS_ASK:

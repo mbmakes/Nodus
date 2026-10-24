@@ -589,3 +589,62 @@ if __name__ == "__main__":
                 failed += 1
                 print(f"HATA  {name}: {type(e).__name__}: {e}")
     sys.exit(1 if failed else 0)
+
+
+# ---------------- kullanici klasorleri + uygulama acma ----------------
+def _fake_home(tmp_path, monkeypatch):
+    (tmp_path / "Desktop").mkdir()
+    monkeypatch.setattr(tools.Path, "home", classmethod(lambda cls: tmp_path))
+    return tmp_path / "Desktop"
+
+
+def test_save_user_file_writes_only_inside_user_folders(tmp_path, monkeypatch):
+    desk = _fake_home(tmp_path, monkeypatch)
+    assert tools.save_user_file("desktop", "not.txt", "merhaba").startswith("Yazildi")
+    assert (desk / "not.txt").read_text(encoding="utf-8") == "merhaba"
+    assert tools.save_user_file("Masaüstü", "alt/klasor/x.txt", "x").startswith("Yazildi")   # yerellestirilmis ad + alt klasor
+    assert tools.save_user_file("desktop", "not.txt", "ezme").startswith(tools.ERR)            # var olan dosya korunur
+    assert (desk / "not.txt").read_text(encoding="utf-8") == "merhaba"
+    assert tools.save_user_file("desktop", "not.txt", "yeni", overwrite="true").startswith("Yazildi")
+    for bad in ("../kacis.txt", "a/../../kacis.txt", str(tmp_path / "mutlak.txt"), "C:/x.txt", "", "."):
+        assert tools.save_user_file("desktop", bad, "x").startswith(tools.ERR), bad
+    assert not (tmp_path / "kacis.txt").exists()
+    assert tools.save_user_file("home", "x.txt", "x").startswith(tools.ERR)                    # yalniz 3 klasor
+    assert tools.save_user_file("documents", "x.txt", "x").startswith(tools.ERR)               # klasor yoksa acik hata
+
+
+def test_open_app_per_platform(monkeypatch):
+    calls = []
+    monkeypatch.setattr(tools.sys, "platform", "darwin")
+    monkeypatch.setattr(tools.subprocess, "run", lambda cmd, **k: calls.append(cmd) or type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})())
+    assert "acildi" in tools.open_app("Safari") and calls[-1] == ["open", "-a", "Safari"]
+    tools.open_app("https://example.com")
+    assert calls[-1] == ["open", "https://example.com"]
+    monkeypatch.setattr(tools.subprocess, "run", lambda cmd, **k: type("R", (), {"returncode": 1, "stdout": "", "stderr": "Unable to find application"})())
+    assert tools.open_app("YokBoyleUygulama").startswith(tools.ERR)
+    for bad in ("", "  ", "a\nb"):
+        assert tools.open_app(bad).startswith(tools.ERR)
+    if os.name == "nt":
+        monkeypatch.setattr(tools.sys, "platform", "win32")
+        opened = []
+        monkeypatch.setattr(tools.os, "startfile", lambda t: opened.append(t), raising=False)
+        assert "acildi" in tools.open_app("notepad") and opened == ["notepad"]
+
+
+def test_user_actions_follow_the_approval_policy():
+    from orchestrator import describe_action
+    for name, params in (("open_app", {"target": "Safari"}), ("save_user_file", {"folder": "desktop", "filename": "a.txt", "content": "x"})):
+        a = {"action": name, "params": params}
+        assert not is_safe_action(a)[0]
+        assert is_safe_action(a, auto_exec=True)[0]
+        assert not is_safe_action(a, auto_exec=True, tainted=True)[0]
+    assert describe_action({"action": "open_app", "params": {"target": "Safari"}})[0] == "Safari"
+    assert "desktop/a.txt" in describe_action({"action": "save_user_file", "params": {"folder": "desktop", "filename": "a.txt", "content": "x"}})[0]
+
+
+def test_agent_dispatches_user_tools(tmp_path, monkeypatch):
+    from agent_core import NodusAgent
+    desk = _fake_home(tmp_path, monkeypatch)
+    r = NodusAgent().execute_action({"action": "save_user_file", "params": {"folder": "desktop", "filename": "rapor.txt", "content": "ok"}})
+    assert r["success"] and (desk / "rapor.txt").read_text(encoding="utf-8") == "ok"
+    assert "save_user_file" in NodusAgent()._build_system_prompt() and "open_app" in NodusAgent()._build_system_prompt()
