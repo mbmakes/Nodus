@@ -103,6 +103,8 @@ def _ok(res) -> bool:
 
 
 class NodusAgent:
+    last_vision_model = ""   # son gorsel cozumlemede denenen model (arayuzdeki adim kaydinda gosterilir)
+
     def __init__(self, api_key: str = None, gemini_api_key: str = None):
         self.api_key = (api_key or os.getenv("OPENROUTER_API_KEY") or "").strip()
         raw_gemini = gemini_api_key or os.getenv("GEMINI_API_KEY") or ""
@@ -244,10 +246,9 @@ EYLEM_DETAYI:
         last_error = ""
         for model_slug in vision_order(self._get_candidate_gemini_models()):
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_slug}:generateContent"
-            t0 = time.time()
             try:
                 resp = requests.post(url, json=payload, headers={"x-goog-api-key": self.gemini_api_key}, timeout=35)
-                print(f"[Nodus] görsel çözümleme: {model_slug} HTTP {resp.status_code}, {time.time() - t0:.1f} sn, görsel {len(image_bytes) / 1e6:.2f} MB", flush=True)
+                self.last_vision_model = f"{model_slug}, HTTP {resp.status_code}, gönderilen {len(image_bytes) / 1e6:.2f} MB"
                 if resp.status_code == 200:
                     return True, resp.json()["candidates"][0]["content"]["parts"][0]["text"]
                 last_error = f"{model_slug}: HTTP {resp.status_code}"

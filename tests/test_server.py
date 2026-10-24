@@ -149,7 +149,8 @@ def test_steps_are_saved_with_the_session(srv, monkeypatch):
     fake_model(server, monkeypatch, [action, "Dosyalar listelendi."])
     sid = new_sid(base)
     last = events(chat(base, sid, "dosyalari goster"))[-1]
-    assert [s["tool"] for s in last["message"]["steps"]] == ["list_files"]
+    assert [s["tool"] for s in last["message"]["steps"] if "tool" in s] == ["list_files"]
+    assert any("Model yanıtı ve araçlar:" in s.get("note", "") for s in last["message"]["steps"])   # sure notu arayuzde gorunur
     d = requests.get(base + f"/api/session/{sid}", headers=H).json()
     saved = d["messages"][-1]["steps"]
     assert saved[0]["tool"] == "list_files" and "ms" in saved[0] and not any(k.startswith("_") for k in saved[0])
@@ -471,3 +472,15 @@ def test_vision_order_prefers_fast_flash_models():
     from agent_core import vision_order
     ranked = ["gemini-3-pro-preview", "gemini-2.5-flash-lite", "gemini-2.5-pro", "gemini-2.5-flash"]
     assert vision_order(ranked) == ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-pro-preview", "gemini-2.5-pro"]
+
+
+def test_chat_steps_record_timings_in_ui(monkeypatch):
+    """Sureler Terminal'e degil adim kaydina yazilir (kullanici Terminal'i gormuyor)."""
+    import io
+    import server
+    events = []
+    st = server.Status(lambda kind, **kw: events.append((kind, kw)))
+    st.write("Görsel çözümleme: 4.2 sn (0.31 MB yüklendi, gemini-flash)")
+    st.write("Çapraz doğrulama: 6.1 sn")
+    notes = [x["note"] for x in st.saved_steps() if "note" in x]
+    assert any("Görsel çözümleme: 4.2 sn" in n for n in notes) and any("Çapraz doğrulama" in n for n in notes)

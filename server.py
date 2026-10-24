@@ -224,7 +224,7 @@ def finish(emit, s: Sess, wr: dict, user_prompt: str, status: Status, prefix: st
         emit("status", label="Cevap bağımsız bir model tarafından doğrulanıyor…", state="running")
         t_v = time.time()
         ok, note = agent.verify_answer(user_prompt, wr["reply"])
-        print(f"[Nodus] çapraz doğrulama: {time.time() - t_v:.1f} sn", flush=True)
+        status.write(f"Çapraz doğrulama: {time.time() - t_v:.1f} sn")
         if ok is False and retry:   # dogrulayici itiraz etti: hesabi bir kez, notu vererek yeniden yaptir
             emit("status", label="Doğrulama farklı sonuç buldu; hesap yeniden yapılıyor…", state="running")
             wr2 = retry(note)
@@ -252,6 +252,7 @@ def do_chat(emit, s: Sess, text, files, model_opt, auto_exec, verify_on):
     if not text and files:
         text = "Yuklenen dosyalari analiz et, tum verileri cikar ve coz."
     final_prompt, problems, image_ok = text, [], False
+    status = Status(emit)
 
     if image_files:
         img = image_files[0]
@@ -259,7 +260,9 @@ def do_chat(emit, s: Sess, text, files, model_opt, auto_exec, verify_on):
             problems.append("Görsel PNG/JPEG olmalı ve 8 MB'ı geçmemeli.")
         else:
             emit("status", label="Teknik çizim sayısallaştırılıyor…", state="running")
+            t_img = time.time()
             ok, res_text = agent.transcribe_engineering_image(img["data"], img["type"])
+            status.write(f"Görsel çözümleme: {time.time() - t_img:.1f} sn ({len(img['data']) / 1e6:.2f} MB yüklendi, {agent.last_vision_model or 'model yok'})")
             if ok:
                 image_ok = True
                 final_prompt += (
@@ -302,12 +305,13 @@ def do_chat(emit, s: Sess, text, files, model_opt, auto_exec, verify_on):
 
     api_history = [{"role": m["role"], "content": m["content"]} for m in memory.get_recent_messages()[-10:]]
     api_history.append({"role": "user", "content": final_prompt})
-    status = Status(emit)
+    t_run = time.time()
     wr = run_autonomous_workflow(
         agent=agent, active_model=active_model, final_prompt=final_prompt, api_history=api_history,
         fetched_models=[], user_prompt=text, status_box=status, max_steps=12,
         auto_exec=auto_exec, on_token=make_streamer(emit, s), cancel=s.cancel.is_set,
     )
+    status.write(f"Model yanıtı ve araçlar: {time.time() - t_run:.1f} sn")
     heavy = agent.assess_complexity(text)[0] or active_model.endswith("heavy")
 
     def retry(note):

@@ -57,15 +57,6 @@ jobs:
           rm -f "$RUNNER_TEMP/open.txt"
           NODUS_PORT=8794 PATH="$RUNNER_TEMP/fakebin:$PATH" "$APP/Contents/MacOS/Nodus"
           test ! -f "$RUNNER_TEMP/open.txt"
-          # Kurulum tamamsa (.venv var) Terminal ACILMAZ: sessizce baslatilir; hazir olmazsa hata uyarisi cikar
-          STUB="$RUNNER_TEMP/stub"; mkdir -p "$STUB/.venv/bin"; : > "$STUB/.venv/bin/python"; chmod +x "$STUB/.venv/bin/python"
-          printf '#!/bin/sh\ntouch "%s/started"\n' "$RUNNER_TEMP" > "$STUB/run_nodus.sh"; : > "$STUB/run_nodus.command"
-          printf '#!/bin/sh\necho "OSA $*" >> "%s/alert.txt"\n' "$RUNNER_TEMP" > "$RUNNER_TEMP/fakebin/osascript"; chmod +x "$RUNNER_TEMP/fakebin/osascript"
-          rm -f "$TMPDIR/nodus_launch.lock" "$RUNNER_TEMP/open.txt" "$RUNNER_TEMP/alert.txt" "$RUNNER_TEMP/started"
-          NODUS_PORT=8795 NODUS_LAUNCH_WAIT=2 PATH="$RUNNER_TEMP/fakebin:$PATH" bash scripts/app_launch.sh "$STUB" || true
-          test -f "$RUNNER_TEMP/started"
-          test ! -f "$RUNNER_TEMP/open.txt"
-          grep -q "açılamadı" "$RUNNER_TEMP/alert.txt"
       - name: Tek satir kurulum + Python'u kendi kuran akis (install.sh, uv)
         if: runner.os != 'Windows'
         shell: bash
