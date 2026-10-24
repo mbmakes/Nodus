@@ -21,7 +21,7 @@ MAX_FILES = 5000
 KEEP_BACKUPS = 2
 # Guncelleme bunlarin uzerine yazmaz (kullanici verisi ve yerel kurulum)
 PROTECTED = (".env", "memory/", "workspace/", "allowed_workspace/", "custom_tools/", "core_vault/",
-             ".venv/", ".update_backup/", ".git/")
+             ".venv/", ".nodus_tools/", ".update_backup/", ".git/")
 PLATFORM_TAG_WORDS = ("macos", "windows", "linux")   # eski, platforma ozel etiketler (v1.0-beta-macos) surum sayilmaz
 HEADERS = {"User-Agent": "Nodus-updater", "Accept": "application/vnd.github+json"}
 

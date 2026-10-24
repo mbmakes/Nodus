@@ -220,7 +220,7 @@ def test_browser_candidates_per_platform(srv):
 
 def test_unix_launchers_use_lf_line_endings():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    for name in ("run_nodus.sh", "run_nodus.command"):
+    for name in ("run_nodus.sh", "run_nodus.command", "install.sh"):
         data = open(os.path.join(root, name), "rb").read()
         assert data.startswith(b"#!/usr/bin/env bash\n") and b"\r" not in data, name   # CRLF macOS'ta "bad interpreter" verir
 
@@ -318,3 +318,60 @@ def test_update_refused_when_task_running_or_already_current_or_failing(srv, mon
         time.sleep(0.1)
     assert st["state"] == "error" and "Izin verilmeyen" in st["message"]
     _reset_update(server)
+
+
+# ---------------------------------------------------------------- ilk kurulum: anahtar ekleme
+KEY = "AIzaSyTESTKEY_0123456789abcdef"
+
+
+def test_bootstrap_reports_missing_keys_and_ping_has_boot_id(srv, monkeypatch):
+    server, base = srv
+    for e in server.KEY_ENV.values():
+        monkeypatch.delenv(e, raising=False)
+    b = requests.get(base + "/api/bootstrap", headers=H).json()
+    assert b["needs_keys"] is True and b["keys"] == {"gemini": False, "groq": False, "openrouter": False}
+    monkeypatch.setenv("GEMINI_API_KEY", KEY)
+    b = requests.get(base + "/api/bootstrap", headers=H).json()
+    assert b["needs_keys"] is False and b["keys"]["gemini"] is True and KEY not in str(b)        # anahtar asla geri donmez
+    assert requests.get(base + "/api/ping").json()["boot"] == server.BOOT_ID
+
+
+def test_setup_keys_writes_env_keeps_other_lines_and_restarts(srv, monkeypatch, tmp_path):
+    server, base = srv
+    env = tmp_path / ".env"
+    env.write_text("FOO=bar\nGEMINI_API_KEY=eski\n# GROQ_API_KEY=yorum\n")
+    restarted = []
+    monkeypatch.setattr(server, "ENV_PATH", str(env))
+    monkeypatch.setattr(server, "validate_key", lambda prov, key: True if prov == "gemini" else None)
+    monkeypatch.setattr(server, "schedule_restart", lambda: restarted.append(1))
+    for e in server.KEY_ENV.values():
+        monkeypatch.setenv(e, "x")                                     # test sonunda eski ortam geri yuklensin
+    r = requests.post(base + "/api/setup/keys", headers=H, json={"gemini": " " + KEY + " ", "groq": "gsk_" + "a" * 20})
+    assert r.status_code == 200 and r.json() == {"ok": True, "unverified": ["Groq"]} and restarted == [1]
+    lines = env.read_text().splitlines()
+    assert "FOO=bar" in lines and f"GEMINI_API_KEY={KEY}" in lines and "# GROQ_API_KEY=yorum" in lines and "GROQ_API_KEY=gsk_" + "a" * 20 in lines
+    assert "GEMINI_API_KEY=eski" not in lines and KEY not in r.text
+    if os.name != "nt":
+        assert oct(os.stat(env).st_mode & 0o777) == "0o600"
+
+
+def test_setup_keys_rejects_bad_input_without_writing(srv, monkeypatch, tmp_path):
+    server, base = srv
+    env = tmp_path / ".env"
+    monkeypatch.setattr(server, "ENV_PATH", str(env))
+    monkeypatch.setattr(server, "schedule_restart", lambda: (_ for _ in ()).throw(AssertionError("yeniden baslamamali")))
+    post = lambda body: requests.post(base + "/api/setup/keys", headers=H, json=body)
+    assert post({}).status_code == 400                                              # bos
+    assert post({"gemini": "kisa"}).status_code == 400                              # cok kisa
+    assert post({"gemini": "bosluk iceren anahtar 1234567890"}).status_code == 400  # bosluk
+    assert post({"gemini": "AIza\nINJECT=1_0123456789abcdef"}).status_code == 400   # satir enjeksiyonu
+    monkeypatch.setattr(server, "validate_key", lambda prov, key: False)
+    r = post({"gemini": KEY})
+    assert r.status_code == 400 and "reddedildi" in r.json()["error"] and KEY not in r.text
+    assert not env.exists()                                                          # hicbir durumda yazilmadi
+    sid = new_sid(base)
+    server.STATE[sid].busy = True
+    try:
+        assert post({"gemini": KEY}).status_code == 409                              # gorev calisirken yeniden baslatma yok
+    finally:
+        server.STATE[sid].busy = False

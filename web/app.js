@@ -47,7 +47,7 @@ const S = {
   sid: null, sessions: [], msgs: [], pending: null, busy: false, run: null,
   models: ['auto'], model: LS.get('model', 'auto'), verify: LS.get('verify', '1') === '1', autoExec: false,
   facts: [], files: [], plan: [], sandbox: { ok: false, why: '' }, providers: [], usage: [], audio: false,
-  attach: [], tab: LS.get('tab', 'out'), preview: null, search: '', hits: null, rested: null, version: '', update: null,
+  attach: [], tab: LS.get('tab', 'out'), preview: null, search: '', hits: null, rested: null, version: '', update: null, keys: {}, needsKeys: false,
 };
 
 // ------------------------------------------------------------------ ag
@@ -589,6 +589,9 @@ function renderSettings() {
         el('thead', {}, el('tr', {}, ['Sağlayıcı', 'İstek', 'Token', '429', 'Kalan istek'].map((h) => el('th', { text: h })))),
         el('tbody', {}, S.usage.map((u) => el('tr', {}, [u.saglayici, u.istek, u.token, u['429'], u.kalan_istek].map((c) => el('td', { text: String(c) })))))) : el('p', { text: 'Anahtarı tanımlı sağlayıcı yok.' }),
       el('p', { style: 'margin-top:8px', text: 'Kalan kota, sağlayıcının yanıt başlıklarından okunur; ilk istekten sonra dolar.' })),
+    el('section', { class: 'set-sec' }, el('h3', { text: 'Anahtarlar' }),
+      el('p', { text: 'Yapay zeka sağlayıcı anahtarların bu bilgisayarda .env dosyasında durur. ' + KEY_PROVIDERS.map(([k, n]) => `${n}: ${S.keys[k] ? '✓ kayıtlı' : '— yok'}`).join(' · ') }),
+      el('div', { class: 'row-btns' }, el('button', { class: 'btn', type: 'button', text: 'Anahtar ekle / değiştir', onclick: () => { $('#settings').close(); showSetup(); } }))),
     el('section', { class: 'set-sec' }, el('h3', { text: 'Sürüm' }),
       el('p', { text: `Nodus ${S.version || '—'}. Güncelleme denetimi GitHub'a bağlanır; NODUS_NO_UPDATE_CHECK=1 ile kapatılır.` }),
       el('div', { class: 'row-btns' }, el('button', { class: 'btn', type: 'button', text: 'Güncellemeleri denetle', onclick: manualUpdateCheck }))),
@@ -607,7 +610,7 @@ async function resetAll() {
 async function refreshData() {
   try {
     const b = await api('/bootstrap');
-    Object.assign(S, { sessions: b.sessions, sandbox: b.sandbox, providers: b.providers, usage: b.usage, models: b.models, facts: b.facts, files: b.files, audio: b.audio, version: b.version || S.version });
+    Object.assign(S, { sessions: b.sessions, sandbox: b.sandbox, providers: b.providers, usage: b.usage, models: b.models, facts: b.facts, files: b.files, audio: b.audio, version: b.version || S.version, keys: b.keys || {}, needsKeys: !!b.needs_keys });
     const resting = new Set(b.providers.filter((p) => p.dinlenen).map((p) => p.saglayici));
     if (S.rested) for (const n of resting) if (!S.rested.has(n)) toast(n + ' kotası doldu ya da sağlayıcı yanıt vermiyor; istekler otomatik olarak diğer sağlayıcılara yönlendiriliyor.');
     S.rested = resting;
@@ -645,6 +648,56 @@ async function removeSession(id, skipConfirm) {
     if (id === S.sid) await newTask(); else refreshData();
   } catch (e) { toast(e.message); }
 }
+
+// ------------------------------------------------------------------ ilk kurulum: anahtar ekleme
+const KEY_PROVIDERS = [['gemini', 'Gemini'], ['groq', 'Groq'], ['openrouter', 'OpenRouter']];
+const setup = { busy: false, error: '', text: '', vals: {} };
+
+function paintSetup() {
+  const body = $('#setup-body');
+  const inputs = {};
+  const row = (k, name, hint) => {
+    inputs[k] = el('input', { type: 'password', autocomplete: 'off', spellcheck: 'false', 'aria-label': name + ' anahtarı',
+      placeholder: S.keys[k] ? 'kayıtlı; değiştirmek için yeni anahtarı yapıştır' : 'anahtarı buraya yapıştır', disabled: setup.busy,
+      value: setup.vals[k] || '', oninput: (e) => { setup.vals[k] = e.target.value; } });   // hata sonrasi yeniden cizimde yazilan silinmesin
+    return el('label', {}, el('span', {}, name, S.keys[k] ? el('span', { class: 'key-ok', text: '  ✓ kayıtlı' }) : null), inputs[k], el('small', { text: hint }));
+  };
+  const submit = async (e) => {
+    e.preventDefault();
+    const payload = {};
+    for (const [k] of KEY_PROVIDERS) if (inputs[k].value.trim()) payload[k] = inputs[k].value.trim();
+    if (!Object.keys(payload).length) { setup.error = 'En az bir anahtar yaz.'; return paintSetup(); }
+    setup.busy = true; setup.error = ''; setup.text = 'Anahtar doğrulanıyor…'; paintSetup();
+    let boot0;
+    try {
+      boot0 = (await api('/ping')).boot;
+      const r = await post('/setup/keys', payload);
+      if (r.unverified && r.unverified.length) toast(r.unverified.join(', ') + ' anahtarı doğrulanamadı (internet?); yine de kaydedildi.');
+    } catch (err) { setup.busy = false; setup.error = err.message; return paintSetup(); }
+    setup.text = 'Kaydedildi. Nodus yeniden başlıyor…'; paintSetup();
+    const t0 = Date.now();
+    for (;;) {
+      await sleep(1000);
+      try { const p = await api('/ping'); if (p.boot && p.boot !== boot0) return location.reload(); } catch { /* yeniden basliyor */ }
+      if (Date.now() - t0 > 90000) { setup.busy = false; setup.error = "Yeniden başlatma uzun sürdü. Nodus'u kapatıp yeniden aç."; return paintSetup(); }
+    }
+  };
+  body.replaceChildren(
+    el('p', { class: 'key-intro' }, 'Nodus, bir yapay zeka sağlayıcısının ', el('b', { text: 'ücretsiz anahtarıyla' }), ' çalışır. En kolayı Google Gemini: ',
+      el('a', { href: 'https://aistudio.google.com/apikey', target: '_blank', rel: 'noopener noreferrer', text: 'aistudio.google.com/apikey' }),
+      ' adresinde “Create API key” de, çıkan anahtarı aşağı yapıştır. Anahtar yalnızca bu bilgisayarda saklanır.'),
+    el('form', { class: 'key-form', onsubmit: submit },
+      row('gemini', 'Gemini (önerilen)', 'Ağır hesaplar ve görsel okuma için.'),
+      row('groq', 'Groq (isteğe bağlı)', 'Hızlı cevaplar ve sesli komut için. console.groq.com'),
+      row('openrouter', 'OpenRouter (isteğe bağlı)', 'Yedek model havuzu. openrouter.ai'),
+      ...(setup.error ? [el('p', { class: 'upd-err', role: 'alert', text: setup.error })] : []),
+      ...(setup.busy ? [el('div', { class: 'status-line' }, el('i', { class: 'spin' }), setup.text)] : []),
+      el('div', { class: 'row-btns' },
+        el('button', { class: 'btn btn-ink', type: 'submit', disabled: setup.busy, text: 'Kaydet ve başlat' }),
+        el('button', { class: 'btn', type: 'button', disabled: setup.busy, text: 'Sonra', onclick: () => $('#setup').close() }))));
+}
+
+function showSetup() { setup.busy = false; setup.error = ''; paintSetup(); if (!$('#setup').open) $('#setup').showModal(); }
 
 // ------------------------------------------------------------------ guncelleme
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -784,6 +837,7 @@ function bind() {
   $('#dock-toggle').addEventListener('click', () => setDock(!dockOpen()));
   $('#scrim').addEventListener('click', () => { setRail(false); if (innerWidth <= 1180) setDock(false); });
   $$('.tabs [role=tab]').forEach((t) => t.addEventListener('click', () => { S.tab = t.dataset.tab; LS.set('tab', S.tab); renderDock(); }));
+  $('#setup').addEventListener('cancel', (e) => { if (setup.busy) e.preventDefault(); });
   $('#update').addEventListener('cancel', (e) => { if (upd.busy) e.preventDefault(); });
   $('#lightbox').addEventListener('click', (e) => { if (e.target.id === 'lightbox') e.currentTarget.close(); });
   $('#settings').addEventListener('click', (e) => { if (e.target.id === 'settings') e.currentTarget.close(); });
@@ -801,7 +855,8 @@ async function boot() {
   bind();
   try {
     await newTask(true);
-    checkUpdateOnOpen();
+    await refreshData();
+    if (S.needsKeys) showSetup(); else checkUpdateOnOpen();
   } catch (e) { toast('Sunucuya ulaşılamadı.'); }
 }
 boot();

@@ -1,33 +1,72 @@
 #!/usr/bin/env bash
-# Nodus baslatici (macOS / Linux). Ilk calistirmada .venv olusturur ve kutuphaneleri kurar.
-# Ortam degiskenleri: PYTHON (ornek: python3.12), NODUS_NO_VENV=1 (venv kullanma), NODUS_PORT, NODUS_NO_WINDOW=1
+# Nodus baslatici (macOS / Linux). Python 3.12 yoksa kendi kurar (yonetici sifresi gerekmez), .venv olusturur,
+# kutuphaneleri kurar ve Nodus'u acar.
+# Ortam: PYTHON (belirli yorumlayici), NODUS_NO_VENV=1, NODUS_FORCE_UV=1 (test: Python'u uv ile kur), NODUS_YES=1 (soru sorma),
+#        NODUS_PORT, NODUS_NO_WINDOW=1
 cd "$(dirname "$0")" || exit 1
 
 echo "==================================================="
 echo "                NODUS BASLATILIYOR"
 echo "==================================================="
 
-PY="${PYTHON:-}"
-if [ -z "$PY" ]; then
-    for c in python3.12 python3; do   # Nodus Python 3.12 ile test edildi; varsa onu tercih et
-        if command -v "$c" >/dev/null 2>&1; then PY="$c"; break; fi
+py_ok() {   # Nodus 3.12 ile test edildi; 3.12 ve 3.13 kabul, 3.14+ icin hazir paket olmayabilir
+    "$1" -c 'import sys; sys.exit(0 if (3, 12) <= sys.version_info[:2] < (3, 14) else 1)' 2>/dev/null
+}
+
+bootstrap_uv() {
+    echo "Python 3.12 bulunamadi (ya da surumu uygun degil)."
+    echo "Nodus klasorune (.nodus_tools/ ve .venv/) tasinabilir bir Python 3.12 kurulacak (~60 MB)."
+    echo "Yonetici sifresi gerekmez, sistemine dokunulmaz; klasoru silince hepsi gider."
+    if [ -z "$NODUS_YES" ] && [ -t 0 ]; then
+        read -r -p "Devam edilsin mi? [E/h] " ans
+        case "$ans" in [hHnN]*) echo "Iptal edildi."; exit 1 ;; esac
+    fi
+    case "$(uname -s)-$(uname -m)" in
+        Darwin-arm64) T=aarch64-apple-darwin ;;
+        Darwin-x86_64) T=x86_64-apple-darwin ;;
+        Linux-x86_64) T=x86_64-unknown-linux-gnu ;;
+        Linux-aarch64) T=aarch64-unknown-linux-gnu ;;
+        *) echo "[HATA] Bu platform icin otomatik kurulum yok ($(uname -s)-$(uname -m)). Python 3.12'yi elle kur."; exit 1 ;;
+    esac
+    mkdir -p .nodus_tools
+    URL="https://github.com/astral-sh/uv/releases/latest/download/uv-$T.tar.gz"
+    echo "[0/2] Python kurulum araci (uv) indiriliyor..."
+    curl -fsSL "$URL" -o .nodus_tools/uv.tar.gz && curl -fsSL "$URL.sha256" -o .nodus_tools/uv.tar.gz.sha256 \
+        || { echo "[HATA] uv indirilemedi (internet?)."; exit 1; }
+    WANT=$(awk '{print $1}' .nodus_tools/uv.tar.gz.sha256)
+    if command -v shasum >/dev/null 2>&1; then GOT=$(shasum -a 256 .nodus_tools/uv.tar.gz | awk '{print $1}'); else GOT=$(sha256sum .nodus_tools/uv.tar.gz | awk '{print $1}'); fi
+    if [ -z "$WANT" ] || [ "$WANT" != "$GOT" ]; then
+        echo "[HATA] Indirilen dosyanin ozeti uyusmuyor; guvenlik icin durduruldu."
+        rm -f .nodus_tools/uv.tar.gz .nodus_tools/uv.tar.gz.sha256
+        exit 1
+    fi
+    tar -xzf .nodus_tools/uv.tar.gz -C .nodus_tools --strip-components=1 || { echo "[HATA] uv acilamadi."; exit 1; }
+    rm -f .nodus_tools/uv.tar.gz .nodus_tools/uv.tar.gz.sha256
+    export UV_PYTHON_INSTALL_DIR="$PWD/.nodus_tools/python" UV_CACHE_DIR="$PWD/.nodus_tools/cache"
+    echo "[0/2] Python 3.12 indiriliyor ve sanal ortam hazirlaniyor..."
+    rm -rf .venv
+    .nodus_tools/uv venv --python 3.12 --seed .venv || { echo "[HATA] Python 3.12 kurulamadi."; exit 1; }
+}
+
+PY=""
+if [ -n "$PYTHON" ]; then   # kullanici ozellikle belirtti: sessizce degistirme
+    command -v "$PYTHON" >/dev/null 2>&1 && "$PYTHON" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)' \
+        || { echo "[HATA] PYTHON=$PYTHON bulunamadi ya da Python 3.12'den eski."; exit 1; }
+    PY="$PYTHON"
+elif [ -z "$NODUS_FORCE_UV" ]; then
+    for c in python3.12 python3.13 python3; do
+        if command -v "$c" >/dev/null 2>&1 && py_ok "$c"; then PY="$c"; break; fi
     done
 fi
-if [ -z "$PY" ] || ! command -v "$PY" >/dev/null 2>&1; then
-    echo "[HATA] Python bulunamadi. Kurulum: https://www.python.org/downloads/  (macOS: brew install python@3.12)"
-    exit 1
-fi
-if ! "$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)'; then
-    echo "[HATA] Python 3.12 veya daha yenisi gerekli (bulunan: $("$PY" --version 2>&1))."
-    echo "       macOS: brew install python@3.12   sonra:   PYTHON=python3.12 ./run_nodus.sh"
-    exit 1
-fi
-if "$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 14) else 1)'; then
-    echo "[UYARI] Python 3.14+ ile bazi kutuphaneler (CoolProp vb.) hazir paket sunmayabilir. Sorun olursa Python 3.12 kullan."
-fi
 
-if [ -z "$NODUS_NO_VENV" ]; then
+if [ -z "$PY" ]; then
+    bootstrap_uv
+    PY=".venv/bin/python"
+elif [ -z "$NODUS_NO_VENV" ]; then
     # Homebrew/sistem Python'u pip ile dogrudan kurulumu reddeder (PEP 668): bu yuzden .venv
+    if [ -d .venv ] && ! .venv/bin/python -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)' 2>/dev/null; then
+        echo "Eski/bozuk .venv yeniden olusturuluyor..."; rm -rf .venv
+    fi
     if [ ! -d .venv ]; then
         echo "[0/2] Sanal ortam (.venv) olusturuluyor..."
         "$PY" -m venv .venv || { echo "[HATA] .venv olusturulamadi."; exit 1; }

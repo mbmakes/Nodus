@@ -441,6 +441,14 @@ kbd {
 .upd-err { margin: 14px 0; padding: 10px 12px; border-left: 3px solid var(--signal); background: color-mix(in srgb, var(--signal) 10%, transparent); font-size: 14px; }
 #update .status-line { margin: 14px 0; }
 #update .row-btns { margin-top: 6px; }
+.key-intro { margin: 14px 0 6px; font-size: 14.5px; }
+.key-intro a { color: var(--accent); }
+.key-form { display: grid; gap: 12px; margin: 14px 0 4px; }
+.key-form label { display: grid; gap: 4px; font: 600 13.5px var(--font-cond); }
+.key-form label small { font: 400 12.5px inherit; color: var(--mute); }
+.key-form input { font: 14px var(--font-mono, monospace); padding: 9px 12px; border: 1px solid var(--rule2); border-radius: 8px; background: var(--bg); color: var(--ink); }
+.key-form input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.key-ok { color: var(--accent); font-weight: 500; }
 
 .lightbox { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; padding: 24px; margin: 0; border: 0; background: transparent; display: none; place-items: center; }
 .lightbox[open] { display: grid; }

@@ -38,7 +38,27 @@ Bir görevi Türkçe yazarsın; Nodus planlar, doğru aracı seçer, hesabı yap
 
 ## Kurulum
 
-Gereksinimler: **Python 3.12** ve en az bir sağlayıcı anahtarı (ücretsiz katmanlar yeterli).
+### Tek satırla kurulum (önerilen)
+
+Hiçbir şey kurman gerekmez; Python'u da Nodus kendisi getirir.
+
+**macOS / Linux** — Terminal'i aç, yapıştır, Enter:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mbmakes/Nodus/master/install.sh | bash
+```
+
+**Windows** — PowerShell'i aç, yapıştır, Enter:
+
+```powershell
+irm https://raw.githubusercontent.com/mbmakes/Nodus/master/install.ps1 | iex
+```
+
+Bu komut son sürümü `~/Nodus` klasörüne (Windows: `%USERPROFILE%\Nodus`) indirir; **Python 3.12 yoksa klasörün içine, yönetici izni istemeden kurar** (taşınabilir, [uv](https://github.com/astral-sh/uv) ile; indirilen dosyanın SHA-256 özeti doğrulanır), kütüphaneleri kurar ve Nodus'u açar. İlk açılışta bir **anahtar penceresi** gelir: ücretsiz [Gemini anahtarını](https://aistudio.google.com/apikey) yapıştırırsın, doğrulanır ve kaydedilir; `.env` dosyasını elle düzenlemen gerekmez. Sonraki açılışlar için klasördeki `run_nodus.bat` (Windows) ya da `bash run_nodus.sh` (macOS/Linux) yeter. Önce betiği okumak istersen: [`install.sh`](install.sh), [`install.ps1`](install.ps1).
+
+### Elle kurulum
+
+Gereksinimler: **Python 3.12** (Windows'ta yoksa başlatıcı kendisi kurar) ve en az bir sağlayıcı anahtarı (ücretsiz katmanlar yeterli). Anahtarı `.env` dosyasına yazmak yerine ilk açılışta çıkan pencereye de yapıştırabilirsin.
 
 **Windows**
 
@@ -124,7 +144,7 @@ Tarayıcı (web/)  ──SSE──►  server.py (Starlette)
 ## Testler
 
 ```bash
-python -m pytest tests -q -p no:cacheprovider      # 63 test
+python -m pytest tests -q -p no:cacheprovider      # 66 test
 ```
 
 Ajan/araç davranışı, güvenlik politikası, sunucu uçları (gerçek uvicorn + sahte model), durdurma ve süreç öldürme, rapor, arama ve hesap doğrulukları kapsanır.

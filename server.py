@@ -21,6 +21,7 @@ from urllib.parse import quote
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(BASE_DIR)
 
+import requests
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
@@ -360,8 +361,77 @@ def flag(v) -> bool:
     return str(v).lower() in ("1", "true", "on")
 
 
+BOOT_ID = str(int(time.time() * 1000))   # her sunucu baslangicinda degisir; yeniden baslamayi tarayici bununla anlar
+
+
 async def ping(request):
-    return JSONResponse({"app": "nodus", "version": __version__})
+    return JSONResponse({"app": "nodus", "version": __version__, "boot": BOOT_ID})
+
+
+# ------------------------------------------------------------------
+# Ilk kurulum: arayuzden API anahtari ekleme (.env'e yazar, dogrular, yeniden baslatir)
+# ------------------------------------------------------------------
+KEY_ENV = {"gemini": "GEMINI_API_KEY", "groq": "GROQ_API_KEY", "openrouter": "OPENROUTER_API_KEY"}
+KEY_NAMES = {"gemini": "Gemini", "groq": "Groq", "openrouter": "OpenRouter"}
+KEY_RE = re.compile(r"^[A-Za-z0-9_\-.]{16,256}$")
+ENV_PATH = os.path.join(BASE_DIR, ".env")
+
+
+def key_status() -> dict:
+    return {p: bool(os.getenv(e)) for p, e in KEY_ENV.items()}
+
+
+def validate_key(prov: str, key: str):
+    """True: gecerli, False: saglayici reddetti, None: dogrulanamadi (ag ya da servis sorunu)."""
+    from providers import PROVIDERS
+    url = PROVIDERS[prov]["base"] + ("/auth/key" if prov == "openrouter" else "/models")
+    try:
+        r = requests.get(url, headers={"Authorization": f"Bearer {key}"}, timeout=8)
+    except requests.RequestException:
+        return None
+    return True if r.status_code == 200 else False if r.status_code in (400, 401, 403) else None
+
+
+def write_env(updates: dict):
+    """.env'de ilgili satirlari degistirir/ekler; digerlerine ve yorumlara dokunmaz."""
+    lines = open(ENV_PATH, encoding="utf-8").read().splitlines() if os.path.isfile(ENV_PATH) else []
+    done = set()
+    for i, line in enumerate(lines):
+        k = line.split("=", 1)[0].strip()
+        if k in updates and not line.lstrip().startswith("#"):
+            lines[i] = f"{k}={updates[k]}"
+            done.add(k)
+    lines += [f"{k}={v}" for k, v in updates.items() if k not in done]
+    tmp = ENV_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lines) + "\n")
+    if os.name != "nt":
+        os.chmod(tmp, 0o600)
+    os.replace(tmp, ENV_PATH)
+
+
+async def setup_keys(request):
+    if any(s.busy for s in STATE.values()) or UPDATE["state"] == "running":
+        return bad("Çalışan bir görev ya da güncelleme var; bitince tekrar dene.", 409)
+    body = await request.json()
+    keys = {}
+    for prov in KEY_ENV:
+        v = str(body.get(prov) or "").strip()
+        if v:
+            if not KEY_RE.match(v):
+                return bad(f"{KEY_NAMES[prov]} anahtarının biçimi geçersiz (boşluk ya da özel karakter olmamalı).")
+            keys[prov] = v
+    if not keys:
+        return bad("En az bir anahtar yaz.")
+    results = await asyncio.gather(*[asyncio.to_thread(validate_key, p, k) for p, k in keys.items()])
+    for prov, ok in zip(keys, results):
+        if ok is False:
+            return bad(f"{KEY_NAMES[prov]} anahtarı reddedildi; doğru kopyaladığından ve anahtarın etkin olduğundan emin ol.")
+    write_env({KEY_ENV[p]: k for p, k in keys.items()})
+    for p, k in keys.items():
+        os.environ[KEY_ENV[p]] = k
+    schedule_restart()
+    return JSONResponse({"ok": True, "unverified": [KEY_NAMES[p] for p, ok in zip(keys, results) if ok is None]})
 
 
 # ------------------------------------------------------------------
@@ -476,6 +546,8 @@ async def bootstrap(request):
         "plan": list(tools.plan),
         "audio": bool(router._key("groq")),
         "version": __version__,
+        "keys": key_status(),
+        "needs_keys": not any(key_status().values()),
     })
 
 
@@ -736,6 +808,7 @@ app = Starlette(
         Route("/api/update/check", update_check),
         Route("/api/update/status", update_status),
         Route("/api/update", update_start, methods=["POST"]),
+        Route("/api/setup/keys", setup_keys, methods=["POST"]),
         Route("/api/facts", facts_add, methods=["POST"]),
         Route("/api/facts/{idx}", facts_del, methods=["DELETE"]),
         Route("/api/files", files_list),

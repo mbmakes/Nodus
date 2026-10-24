@@ -33,3 +33,29 @@ jobs:
           done
           cat launcher.log
           exit 1
+      - name: Tek satir kurulum + Python'u kendi kuran akis (install.sh, uv)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          NODUS_ARCHIVE_REF=${{ github.sha }} NODUS_HOME="$RUNNER_TEMP/nodus-install" NODUS_FORCE_UV=1 NODUS_YES=1 UV_PYTHON_PREFERENCE=only-managed \
+            NODUS_NO_WINDOW=1 NODUS_NO_UPDATE_CHECK=1 NODUS_PORT=8792 bash install.sh > install.log 2>&1 &
+          for i in $(seq 1 1200); do
+            if curl -sf http://127.0.0.1:8792/api/ping | grep -q nodus; then echo "ping ok (${i}s)"; tail -15 install.log; exit 0; fi
+            sleep 1
+          done
+          cat install.log
+          exit 1
+      - name: Tek satir kurulum + Python'u kendi kuran akis (install.ps1, uv)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:NODUS_ARCHIVE_REF = '${{ github.sha }}'
+          $env:NODUS_HOME = Join-Path $env:RUNNER_TEMP 'nodus-install'
+          $env:NODUS_FORCE_UV = '1'; $env:UV_PYTHON_PREFERENCE = 'only-managed'; $env:NODUS_YES = '1'; $env:NODUS_NO_WINDOW = '1'; $env:NODUS_NO_UPDATE_CHECK = '1'; $env:NODUS_PORT = '8792'
+          $p = Start-Process pwsh -ArgumentList '-NoProfile', '-File', 'install.ps1' -PassThru -RedirectStandardOutput install.log -RedirectStandardError install.err
+          for ($i = 1; $i -le 1200; $i++) {
+            try { $r = Invoke-RestMethod http://127.0.0.1:8792/api/ping -TimeoutSec 2; if ($r.app -eq 'nodus') { "ping ok (${i}s)"; Get-Content install.log -Tail 15; exit 0 } } catch { }
+            Start-Sleep -Seconds 1
+          }
+          Get-Content install.log, install.err
+          exit 1
