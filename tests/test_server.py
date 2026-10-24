@@ -493,3 +493,25 @@ def test_image_prompt_is_generic_and_images_do_not_force_heavy_model():
     assert "ekran goruntusuyse" in src and "arama veya uydurma" in src   # teknik cizim varsayimi yok
     heavy, score, reasons = NodusAgent().assess_complexity("Nodus ekran goruntusu\n--- [YUKLENEN GORSELIN ICERIGI (PERCEPTION)] ---\nbir sohbet penceresi")
     assert not heavy and score == 0 and "Teknik Cizim" not in reasons
+
+
+def test_claim_without_tool_is_challenged_once(srv, monkeypatch):
+    server, base = srv
+    action = 'EYLEM_DETAYI:\n{"action": "list_files", "params": {}}'
+    # 1) arac cagirmadan "ekledim" -> yonlendirilir; 2) arac calisir; 3) nihai cevap
+    fake_model(server, monkeypatch, ["Uygulamayı Dock'a ekledim.", action, "Dosyaları listeledim, Dock'a ekleyemedim."])
+    sid = new_sid(base)
+    last = events(chat(base, sid, "dock'a ekle"))[-1]
+    content = last["message"]["content"]
+    assert "Dock'a ekledim." not in content and "ekleyemedim" in content
+    assert any("hiçbir araç çalışmadı" in s.get("note", "") for s in last["message"]["steps"])
+
+
+def test_claim_after_tool_is_accepted_without_extra_model_call(srv, monkeypatch):
+    server, base = srv
+    action = 'EYLEM_DETAYI:\n{"action": "list_files", "params": {}}'
+    fake_model(server, monkeypatch, [action, "Dosyaları listeledim ve not ekledim."])   # 3. cagri olursa StopIteration -> test duser
+    sid = new_sid(base)
+    last = events(chat(base, sid, "listele"))[-1]
+    assert "not ekledim" in last["message"]["content"]
+    assert not any("hiçbir araç çalışmadı" in s.get("note", "") for s in last["message"]["steps"])

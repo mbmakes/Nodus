@@ -5,7 +5,7 @@
 **Mühendislik hesaplarını, dosya ve araştırma işlerini kendi başına yürüten, yerel çalışan otonom yapay zeka ajanı.**
 *An autonomous, locally-run AI agent for engineering calculations, file work and research.*
 
-> **Sürüm: v1.6.3-beta.** Günlük kullanıma yakın ama henüz geniş çapta denenmedi. Bilinen sınırlar için [Sınırlar](#sınırlar-ve-beta-notları) bölümüne bak.
+> **Sürüm: v1.7-beta.** Günlük kullanıma yakın ama henüz geniş çapta denenmedi. Bilinen sınırlar için [Sınırlar](#sınırlar-ve-beta-notları) bölümüne bak.
 
 ![Hesap föyü: adım kaydı, denklem ve tablo](docs/img/hesap-foyu.png)
 
@@ -139,7 +139,7 @@ Tarayıcı (web/)  ──SSE──►  server.py (Starlette)
 ## Güvenlik modeli
 
 - **Workspace kafesi:** Tüm dosya işlemleri çalışma alanında kalır; `..`, sembolik link ve mutlak yol kaçışları reddedilir.
-- **Onay politikası:** Kod/komut çalıştırma ve silme her zaman onay ister. İnternetten ya da belgeden içerik okunduktan sonra, "otomatik çalıştır" açık olsa bile onay istenir (prompt injection riskine karşı).
+- **Onay politikası:** Varsayılan olarak kod/komut çalıştırma ve silme onay ister. "Kodu onaysız çalıştır" açılırsa (seçim hatırlanır) Python kodu ve kabuk komutları sormadan çalışır; dosya silme yine onay ister. İnternetten ya da belgeden içerik okunduktan sonra, "otomatik çalıştır" açık olsa bile onay istenir (prompt injection riskine karşı).
 - **Yerel sunucu:** Yalnızca `127.0.0.1`/`localhost` Host başlığı, değiştirici isteklerde özel başlık + aynı origin, sıkı CSP. SVG/HTML hiçbir zaman satır içi sunulmaz.
 - **Alt süreçler** API anahtarları olmadan, çalışma alanı içinde, zaman aşımıyla çalışır.
 

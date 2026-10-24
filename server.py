@@ -351,7 +351,7 @@ def do_decision(emit, s: Sess, approve, model_opt, auto_exec, verify_on):
         wr = run_autonomous_workflow(
             agent=agent, active_model=active_m, final_prompt=obs, api_history=history, fetched_models=[],
             user_prompt=meta.get("user_prompt", ""), status_box=status, auto_exec=auto_exec, tainted=tainted,
-            on_token=make_streamer(emit, s), cancel=s.cancel.is_set,
+            on_token=make_streamer(emit, s), cancel=s.cancel.is_set, tools_done=1,   # onaylanan arac az once calisti
         )
         wr["images"] = imgs + wr["images"]
         finish(emit, s, wr, meta.get("user_prompt", "[Kritik Eylem Onaylandi]"), status, prefix=res_text, verify=verify_on)

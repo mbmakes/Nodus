@@ -30,6 +30,15 @@ PERSISTENT_WRITE = {"remember"}   # kalici hafizaya yazar; dis icerik okunduktan
 TAINTING = {"web_search", "fetch_url", "browse_url", "read_document"}   # dis kaynakli icerik getiren araclar
 KNOWN_ACTIONS = READ_ONLY | WORKSPACE_WRITE | CODE_EXEC | PERSISTENT_WRITE | set(ALWAYS_ASK)
 
+# Model arac cagirmadan "yaptim" derse (dosya/sistem islemi iddiasi) cevap kabul edilmez; bir kez gercekten yapmasi istenir.
+# shortcut: yalniz bu fiillere bakar (hesapladim/cozdum gibi arac gerektirmeyen iddialar haric); yeni kalip cikarsa buraya ekle.
+CLAIM_RE = re.compile(r"\b(?:oluşturdum|kaydettim|ekledim|sildim|düzenledim|güncelledim|çalıştırdım|kurdum|açtım|taşıdım|değiştirdim|"
+                      r"indirdim|ayarladım|başlattım|kapattım|kopyaladım|gönderdim|yükledim|eklendi|kaydedildi|oluşturuldu|silindi|"
+                      r"güncellendi|kuruldu|değiştirildi|taşındı|yapıldı)\b", re.IGNORECASE)
+CLAIM_NUDGE = ("[SISTEM] Cevabinda bir islemi yaptigini soyledin ama bu turda hicbir arac calistirmadin. "
+               "Islemi simdi GERCEKTEN yap (uygun araci EYLEM_DETAYI ile cagir; bilgisayarda is icin run_shell). "
+               "Yapamiyorsan ya da yapmadiysan bunu acikca soyle; yapmadigin seyi yaptim deme.")
+
 
 def clean_display_text(text: str) -> str:
     """Modelin ic seslerini, dusunce zincirini ve arac cagrisi kalintilarini temizler."""
@@ -119,6 +128,11 @@ def is_safe_action(action_info: dict, auto_exec: bool = False, tainted: bool = F
         if tainted:
             why += " (Bu oturumda internetten icerik okundu; kodun o icerikten etkilenmedigini kontrol edin.)"
         return False, why
+
+    # "Kodu onaysiz calistir" aciksa kabuk komutu da onaysiz: onaysiz Python zaten her komutu calistirabilir, ayri onay guvenlik katmaz.
+    # Silme ve kalici kod ekleme (self_improve) yine sorulur; internetten icerik okunduysa da sorulur.
+    if action == "run_shell" and auto_exec and not tainted:
+        return True, ""
 
     if action in ALWAYS_ASK:
         return False, ALWAYS_ASK[action]
@@ -215,7 +229,7 @@ def execute_with_healing(agent, action_info: dict, active_model: str, fetched_mo
 
 def run_autonomous_workflow(agent, active_model: str, final_prompt: str, api_history: list, fetched_models: list,
                             user_prompt: str, status_box=None, max_steps: int = 12,
-                            auto_exec: bool = False, tainted: bool = False, on_token=None, cancel=None) -> dict:
+                            auto_exec: bool = False, tainted: bool = False, on_token=None, cancel=None, tools_done: int = 0) -> dict:
     """Nodus'un kullanici araya girmeden gorevi bastan sona bitirmesini saglayan ReAct dongusu.
     Onay gerektiren bir eylemde durur ve 'resume' ile devam ettirilebilir durum dondurur."""
     step = 0
@@ -224,6 +238,7 @@ def run_autonomous_workflow(agent, active_model: str, final_prompt: str, api_his
     current_turn_prompt = final_prompt
     history_chain = list(api_history)
     seen_actions = {}
+    tools_run, nudged = tools_done, False   # tools_done: onay sonrasi devamda arac dongu disinda zaten calismis demektir
 
     def result(reply, pending=None, resume=None):
         return {"reply": reply, "images": all_generated_images, "pending_action": pending, "resume": resume}
@@ -254,6 +269,15 @@ def run_autonomous_workflow(agent, active_model: str, final_prompt: str, api_his
 
         # Arac cagrisi yoksa (selamlasma veya gorev bitti) dongu biter
         if not action:
+            if tools_run == 0 and not nudged and CLAIM_RE.search(user_explanation or ""):
+                nudged = True
+                collected_explanations.pop()   # yanlis "yaptim" iddiasi nihai cevaba girmesin
+                history_chain.append({"role": "assistant", "content": response})
+                history_chain.append({"role": "user", "content": CLAIM_NUDGE})
+                current_turn_prompt = CLAIM_NUDGE
+                if status_box:
+                    status_box.write("Cevapta işlem yapıldığı söylendi ama hiçbir araç çalışmadı; model işi gerçekten yapmaya yönlendiriliyor.")
+                continue
             if status_box:
                 status_box.update(label="Yanıt hazır", state="complete", expanded=False)
             return result(user_explanation or response)
@@ -293,6 +317,7 @@ def run_autonomous_workflow(agent, active_model: str, final_prompt: str, api_his
             agent, action, active_model, fetched_models, user_prompt=user_prompt,
             status_box=status_box, auto_exec=auto_exec, tainted=tainted, cancel=cancel
         )
+        tools_run += 1
         if action_name in TAINTING:
             tainted = True   # artik dis kaynaklı icerik baglamda
 

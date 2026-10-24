@@ -79,7 +79,11 @@ def test_policy():
     assert not is_safe_action(run)[0]
     assert is_safe_action(run, auto_exec=True)[0]
     assert not is_safe_action(run, auto_exec=True, tainted=True)[0]      # internetten gelen icerik -> onay
-    for a in ("run_shell", "delete_file", "self_improve", "bilinmeyen"):
+    sh = {"action": "run_shell", "params": {"command": "ls"}}
+    assert not is_safe_action(sh)[0]                                     # varsayilan: sorar
+    assert is_safe_action(sh, auto_exec=True)[0]                         # "onaysiz calistir" aciksa sormaz
+    assert not is_safe_action(sh, auto_exec=True, tainted=True)[0]       # ...ama internetten icerik okunduysa sorar
+    for a in ("delete_file", "self_improve", "bilinmeyen"):
         assert not is_safe_action({"action": a}, auto_exec=True)[0], a
     for a in ("read_file", "write_file", "web_search", "fetch_url", "solve_math"):
         assert is_safe_action({"action": a})[0], a

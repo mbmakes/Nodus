@@ -45,7 +45,7 @@ const STARTERS = [
 // ------------------------------------------------------------------ durum
 const S = {
   sid: null, sessions: [], msgs: [], pending: null, busy: false, run: null,
-  models: ['auto'], model: LS.get('model', 'auto'), verify: LS.get('verify', '1') === '1', autoExec: false,
+  models: ['auto'], model: LS.get('model', 'auto'), verify: LS.get('verify', '1') === '1', autoExec: LS.get('auto', '0') === '1',
   facts: [], files: [], plan: [], sandbox: { ok: false, why: '' }, providers: [], usage: [], audio: false,
   attach: [], tab: LS.get('tab', 'out'), preview: null, search: '', hits: null, rested: null, version: '', update: null, keys: {}, needsKeys: false,
 };
@@ -583,7 +583,7 @@ function renderSettings() {
       el('p', { text: 'Kapalıyken her kod çalıştırma senden onay ister. İnternetten ya da belgeden içerik okunduktan sonra bu ayar ne olursa olsun onay istenir.' }),
       el('div', { class: 'row-btns' },
         toggle('verify', 'Ağır görevlerde çapraz doğrula', S.verify, (v) => { S.verify = v; LS.set('verify', v ? '1' : '0'); }),
-        toggle('auto', 'Kodu onaysız çalıştır', S.autoExec, (v) => { S.autoExec = v; }))),
+        toggle('auto', 'Kodu onaysız çalıştır', S.autoExec, (v) => { S.autoExec = v; LS.set('auto', v ? '1' : '0'); }))),
     el('section', { class: 'set-sec' }, el('h3', { text: 'Bugünkü kullanım' }),
       S.usage.length ? el('table', { class: 'use-table' },
         el('thead', {}, el('tr', {}, ['Sağlayıcı', 'İstek', 'Token', '429', 'Kalan istek'].map((h) => el('th', { text: h })))),
@@ -808,8 +808,8 @@ function bind() {
   $('#mic').addEventListener('click', toggleMic);
   $('#opt-verify').addEventListener('click', () => { S.verify = !S.verify; LS.set('verify', S.verify ? '1' : '0'); renderComposer(); });
   $('#opt-auto').addEventListener('click', () => {
-    S.autoExec = !S.autoExec; renderComposer();
-    if (S.autoExec) toast('Python kodu onay istenmeden çalışacak. Dosya silme ve kabuk komutları yine onay ister.');
+    S.autoExec = !S.autoExec; LS.set('auto', S.autoExec ? '1' : '0'); renderComposer();
+    if (S.autoExec) toast('Python kodu ve kabuk komutları onay istenmeden çalışacak (bu seçim hatırlanır). Dosya silme yine onay ister.');
   });
   prompt.addEventListener('paste', (e) => { const fs = [...(e.clipboardData ? e.clipboardData.files : [])]; if (fs.length) { e.preventDefault(); addFiles(fs); } });
 
