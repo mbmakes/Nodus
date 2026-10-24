@@ -4,6 +4,8 @@
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+# PowerShell 7'den baslatilinca modul yolu 7'ninkini tasir ve 5.1 Get-FileHash/Expand-Archive'i bulamaz: varsayilana don
+$env:PSModulePath = [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
@@ -28,7 +30,9 @@ try {
     Invoke-WebRequest "$url.sha256" -OutFile $shaFile -UseBasicParsing
 } catch { Write-Host ('[HATA] uv indirilemedi (internet?): ' + $_.Exception.Message); exit 1 }
 $want = ((Get-Content $shaFile -Raw) -split '\s+')[0].Trim().ToLower()
-$got = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+$fs = [System.IO.File]::OpenRead($zip)
+$got = ([BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash($fs)) -replace '-', '').ToLower()
+$fs.Close()
 Remove-Item $shaFile -Force -ErrorAction SilentlyContinue
 if (-not $want -or $want -ne $got) {
     Remove-Item $zip -Force -ErrorAction SilentlyContinue

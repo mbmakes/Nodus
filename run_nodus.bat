@@ -30,7 +30,7 @@ goto havepython
 
 :bootfail
 echo [HATA] Python 3.12 kurulamadi. Elle kurabilirsin: https://www.python.org/downloads/
-pause
+if not defined NODUS_YES pause
 exit /b 1
 
 :havepython
@@ -46,4 +46,4 @@ echo.
 
 "%PYEXE%" server.py
 
-pause
+if not defined NODUS_YES pause
