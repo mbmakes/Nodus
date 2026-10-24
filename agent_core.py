@@ -24,6 +24,15 @@ def _system_block() -> str:
     return f"- Calistigin bilgisayar: {sysname} {platform.release()}, ev klasoru {home}. Kabuk: sh/bash."
 
 
+def vision_order(models: list) -> list:
+    """Gorsel cozumleme icin hizli 'flash' modelleri one alir (pro/dusunen modeller 15+ sn surebilir); siralama kendi icinde korunur.
+    flash -> flash-lite -> digerleri. shortcut: ad desenine bakar; yeni model adlari bu gruplara girmezse sona duser."""
+    def group(m: str) -> int:
+        low = m.lower()
+        return 0 if "flash" in low and "lite" not in low else 1 if "flash" in low else 2
+    return sorted(models, key=group)
+
+
 def shrink_image(data: bytes, mime: str, max_side: int = 2000, max_bytes: int = 700_000) -> tuple:
     """Buyuk ekran goruntulerini (Retina PNG: birkac MB) kucultup JPEG'e sikistirir; Google'a yukleme ve cozumleme suresi kisalir.
     Kucukse, Pillow yoksa ya da dosya bozuksa orijinali dondurur. (bytes, mime)"""
@@ -213,7 +222,7 @@ EYLEM_DETAYI:
         except Exception:
             pass
         # gorsel icin gemini ailesi; sabit model adi yok (adlar hizla eskiyor)
-        self._gemini_models = [n for n in rank_models([n for n in names if "gemini" in n.lower()], "heavy")][:5]
+        self._gemini_models = [n for n in rank_models([n for n in names if "gemini" in n.lower()], "heavy")][:8]
         return self._gemini_models
 
     def transcribe_engineering_image(self, image_bytes: bytes, mime_type: str = "image/png") -> tuple:
@@ -233,10 +242,12 @@ EYLEM_DETAYI:
         payload = {"contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": mime_type, "data": b64_data}}]}]}
 
         last_error = ""
-        for model_slug in self._get_candidate_gemini_models():
+        for model_slug in vision_order(self._get_candidate_gemini_models()):
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_slug}:generateContent"
+            t0 = time.time()
             try:
                 resp = requests.post(url, json=payload, headers={"x-goog-api-key": self.gemini_api_key}, timeout=35)
+                print(f"[Nodus] görsel çözümleme: {model_slug} HTTP {resp.status_code}, {time.time() - t0:.1f} sn, görsel {len(image_bytes) / 1e6:.2f} MB", flush=True)
                 if resp.status_code == 200:
                     return True, resp.json()["candidates"][0]["content"]["parts"][0]["text"]
                 last_error = f"{model_slug}: HTTP {resp.status_code}"

@@ -222,7 +222,9 @@ def finish(emit, s: Sess, wr: dict, user_prompt: str, status: Status, prefix: st
     reply = "\n\n".join(x for x in (prefix, wr["reply"]) if x).strip()
     if verifiable():
         emit("status", label="Cevap bağımsız bir model tarafından doğrulanıyor…", state="running")
+        t_v = time.time()
         ok, note = agent.verify_answer(user_prompt, wr["reply"])
+        print(f"[Nodus] çapraz doğrulama: {time.time() - t_v:.1f} sn", flush=True)
         if ok is False and retry:   # dogrulayici itiraz etti: hesabi bir kez, notu vererek yeniden yaptir
             emit("status", label="Doğrulama farklı sonuç buldu; hesap yeniden yapılıyor…", state="running")
             wr2 = retry(note)

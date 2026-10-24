@@ -465,3 +465,9 @@ def test_shrink_image_reduces_big_screenshots_and_keeps_small_ones():
     tiny = io.BytesIO(); Image.new("RGB", (200, 100), "white").save(tiny, "PNG")
     assert shrink_image(tiny.getvalue(), "image/png") == (tiny.getvalue(), "image/png")
     assert shrink_image(b"bozuk", "image/png") == (b"bozuk", "image/png")
+
+
+def test_vision_order_prefers_fast_flash_models():
+    from agent_core import vision_order
+    ranked = ["gemini-3-pro-preview", "gemini-2.5-flash-lite", "gemini-2.5-pro", "gemini-2.5-flash"]
+    assert vision_order(ranked) == ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-pro-preview", "gemini-2.5-pro"]
