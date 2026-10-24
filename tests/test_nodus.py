@@ -648,3 +648,50 @@ def test_agent_dispatches_user_tools(tmp_path, monkeypatch):
     r = NodusAgent().execute_action({"action": "save_user_file", "params": {"folder": "desktop", "filename": "rapor.txt", "content": "ok"}})
     assert r["success"] and (desk / "rapor.txt").read_text(encoding="utf-8") == "ok"
     assert "save_user_file" in NodusAgent()._build_system_prompt() and "open_app" in NodusAgent()._build_system_prompt()
+
+
+# ---------------- ajan dosya araclari: kilit yok, kritik yerler onay ister ----------------
+def test_agent_file_tools_reach_outside_workspace_but_critical_paths_ask(tmp_path, monkeypatch):
+    f = tmp_path / "disarda.txt"
+    f.write_text("merhaba", encoding="utf-8")
+    assert "merhaba" in tools.read_file(str(f))                                    # workspace disinda okunur
+    assert tools.write_file(str(tmp_path / "yeni.txt"), "x").startswith("'")       # workspace disina yazilir
+    assert (tmp_path / "yeni.txt").read_text(encoding="utf-8") == "x"
+    assert tools.path_risk(str(f))[0] == "ok" and tools.path_risk(str(tmp_path / "yeni2.txt"), write=True)[0] == "ok"
+    # kritik yerler: sorulur
+    home = os.path.expanduser("~")
+    sys_file = "C:/Windows/win.ini" if os.name == "nt" else "/etc/hosts"
+    assert tools.path_risk(sys_file)[0] == "ask"
+    assert tools.path_risk(os.path.join(home, ".ssh", "id_rsa"))[0] == "ask"
+    assert tools.path_risk(os.path.join(home, "kimlik", "server.pem"))[0] == "ask"
+    assert tools.path_risk(str(f), tainted=True)[0] == "ok"                        # temp klasoru muaf; asagida ev klasoru ile
+    assert tools.path_risk(os.path.join(home, "Desktop", "x.txt"), tainted=True)[0] == "ask"
+    assert tools.path_risk(os.path.join(home, "Desktop", "x.txt"), write=True)[0] in ("ok", "ask")   # var olan dosya ise ask
+
+
+def test_nodus_env_and_own_folder_are_never_reachable():
+    env = os.path.join(tools.BASE_DIR, ".env")
+    assert tools.path_risk(env)[0] == "deny" and tools.read_file(env).startswith(ERR)
+    assert tools.path_risk(env + ".local")[0] == "deny"
+    own = os.path.join(tools.BASE_DIR, "server.py")
+    assert tools.path_risk(own)[0] == "ok"                                         # kaynagi OKUMAK serbest
+    assert tools.path_risk(own, write=True)[0] == "deny" and tools.write_file(own, "x").startswith(ERR)
+    assert tools.apply_patch(own, "a", "b").startswith(ERR) and tools.delete_file(own).startswith(ERR)
+
+
+def test_existing_outside_file_overwrite_asks_but_workspace_does_not(tmp_path):
+    existing = tmp_path / "var.txt"
+    existing.write_text("onemli", encoding="utf-8")
+    home_file = os.path.join(os.path.expanduser("~"), "nodus_test_yok_dosya.txt")
+    assert not os.path.exists(home_file) and tools.path_risk(home_file, write=True)[0] == "ok"   # yeni dosya: sormaz
+    assert tools.path_risk("rapor.txt", write=True)[0] == "ok"                                   # workspace: sormaz
+
+
+def test_policy_gates_file_tools_by_path(monkeypatch):
+    ssh = {"action": "read_file", "params": {"filename": os.path.join(os.path.expanduser("~"), ".ssh", "id_rsa")}}
+    assert not is_safe_action(ssh)[0] and not is_safe_action(ssh, auto_exec=True)[0]   # "onaysiz calistir" bile kritik yerde sorar
+    assert is_safe_action({"action": "read_file", "params": {"filename": "a.txt"}})[0]
+    assert is_safe_action({"action": "list_files", "params": {}})[0]
+    assert is_safe_action({"action": "write_file", "params": {"filename": "a.txt", "content": "x"}})[0]
+    why = is_safe_action(ssh)[1]
+    assert "id_rsa" in why

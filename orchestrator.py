@@ -29,6 +29,9 @@ ALWAYS_ASK = {
     "self_improve": "Sisteme kalici yeni kod eklenmek isteniyor (bu surece yuklenecek).",
 }
 USER_ACTIONS = {"run_shell", "open_app", "save_user_file"}   # kullanicinin bilgisayarinda is yapan araclar: "onaysiz calistir" aciksa onaysiz
+FILE_TOOLS = {"read_file", "list_files", "search_codebase", "read_document", "write_file", "apply_patch"}   # tum bilgisayarda calisir; kritik yol -> onay
+FILE_WRITE = {"write_file", "apply_patch"}
+FILE_PATH_KEYS = ("filename", "filepath", "path", "directory", "dir", "target_dir")
 PERSISTENT_WRITE = {"remember"}   # kalici hafizaya yazar; dis icerik okunduktan sonra onay ister (kalici enjeksiyon riski)
 TAINTING = {"web_search", "fetch_url", "browse_url", "read_document"}   # dis kaynakli icerik getiren araclar
 KNOWN_ACTIONS = READ_ONLY | WORKSPACE_WRITE | CODE_EXEC | PERSISTENT_WRITE | set(ALWAYS_ASK)
@@ -120,6 +123,15 @@ def is_safe_action(action_info: dict, auto_exec: bool = False, tainted: bool = F
     """(izin_var, neden). Kod calistirma, kullanici 'otomatik' demedikce veya oturumda internetten
     icerik okunmussa (prompt injection riski) onay ister."""
     action = action_info.get("action", "")
+
+    if action in FILE_TOOLS:
+        params = action_info.get("params") or {}
+        target = next((params[k] for k in FILE_PATH_KEYS if params.get(k)), None)
+        if target:   # yol yoksa arac workspace'in kokunu kullanir
+            level, why = tools.path_risk(str(target), write=action in FILE_WRITE, tainted=tainted)
+            if level == "ask":   # kritik yer: "onaysiz calistir" acik olsa bile sorulur. 'deny' aracin kendi hatasina birakilir
+                return False, why
+        return True, ""
 
     if action in READ_ONLY or action in WORKSPACE_WRITE:
         return True, ""

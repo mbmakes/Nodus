@@ -2,6 +2,7 @@
 import os
 import re
 import sys
+import tempfile
 import json
 import shutil
 import time
@@ -60,6 +61,80 @@ def _safe_path(filepath: str) -> str:
     full = os.path.realpath(os.path.join(WORKSPACE_DIR, p))
     if not Path(full).is_relative_to(Path(WORKSPACE_DIR)):
         raise ValueError(f"'{filepath}' calisma alani disinda; erisim engellendi. (Masaustu/Belgeler/Indirilenler'e yazmak icin save_user_file, uygulama acmak icin open_app kullan.)")
+    return full
+
+
+# ---- Ajan dosya araclari: tum bilgisayarda calisir; kritik yerler onay ister (orchestrator.is_safe_action -> path_risk) ----
+# _safe_path (workspace kafesi) sunucunun /api/file, yukleme ve rapor yollari icin AYNEN kalir: agdan erisilebilen yuzey kilitli.
+_POSIX_SYSTEM = ("/System", "/Library", "/usr", "/bin", "/sbin", "/etc", "/boot", "/dev", "/proc", "/sys", "/lib", "/lib64", "/root",
+                 "/Applications", "/private/etc")   # /var ve /opt bilerek yok: macOS gecici klasoru /private/var/folders altindadir
+_HOME_SENSITIVE = {".ssh", ".aws", ".gnupg", ".kube", ".docker", ".config", ".gcloud", ".azure", "library", "appdata",
+                   ".bashrc", ".zshrc", ".profile", ".bash_profile", ".zprofile", ".gitconfig", ".netrc", ".npmrc", ".pypirc"}
+_SECRET_FILE = re.compile(r"^(\.env(\..+)?|id_(rsa|ed25519|ecdsa|dsa)(\.pub)?|.+\.(pem|key|p12|pfx|kdbx|ppk)|credentials(\.json)?|secrets?\.(json|ya?ml|txt)|\.netrc|\.npmrc|\.pypirc)$", re.IGNORECASE)
+
+
+def _under(path: str, root: str) -> bool:
+    try:
+        return Path(path).is_relative_to(Path(os.path.realpath(root)))
+    except (ValueError, OSError):
+        return False
+
+
+def resolve_path(filepath: str) -> str:
+    """Ajan dosya araclari icin yol cozumleme: mutlak yol ve ~ kabul edilir, goreli yol workspace'e goredir. Gercek (symlink cozulmus) yolu dondurur."""
+    p = str(filepath or "").strip().strip("\"'")
+    if not p:
+        raise ValueError("Bos dosya yolu.")
+    p = os.path.expanduser(p)
+    if not os.path.isabs(p):
+        if ":" in p:
+            raise ValueError("Yolda ':' karakterine izin verilmez.")
+        parts = [x for x in re.split(r"[\\/]+", p) if x]
+        if parts and parts[0].lower() == "workspace":
+            parts = parts[1:]
+        p = os.path.join(WORKSPACE_DIR, *parts) if parts else WORKSPACE_DIR
+    return os.path.realpath(p)
+
+
+def path_risk(filepath: str, write: bool = False, tainted: bool = False) -> tuple:
+    """('ok' | 'ask' | 'deny', neden). deny: asla (Nodus'un .env'i, Nodus klasorune yazma). ask: kritik yer, kullanici onayi gerekir."""
+    try:
+        full = resolve_path(filepath)
+    except ValueError:
+        return "ok", ""          # arac kendi hata mesajini verir
+    name = os.path.basename(full)
+    if _under(full, BASE_DIR) and not _under(full, WORKSPACE_DIR):
+        if os.path.dirname(full) == os.path.realpath(BASE_DIR) and name.lower().startswith(".env"):
+            return "deny", "Nodus'un .env dosyasi (API anahtarlari) ajana kapalidir."
+        if write:
+            return "deny", "Nodus'un kendi klasorune dosya araclariyla yazilamaz (kalici degisiklik icin self_improve var)."
+    if _under(full, WORKSPACE_DIR):
+        return "ok", ""
+    if _under(full, tempfile.gettempdir()):
+        return "ok", ""
+    home = os.path.realpath(os.path.expanduser("~"))
+    roots = [os.environ.get(k) for k in ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData")] if os.name == "nt" else list(_POSIX_SYSTEM)
+    if any(r and _under(full, r) for r in roots):
+        return "ask", "Sistem klasoru: " + full
+    if _SECRET_FILE.match(name):
+        return "ask", f"Gizli bilgi icerebilecek dosya: {full}"
+    if _under(full, home):
+        first = Path(full).relative_to(Path(home)).parts[:1]
+        if first and first[0].lower() in _HOME_SENSITIVE:
+            return "ask", f"Kisisel ayar/anahtar klasoru: {full}"
+    if tainted:
+        return "ask", "Bu oturumda internetten icerik okundu; calisma alani disindaki dosyaya erisim icin onay gerekli."
+    if write and os.path.exists(full):
+        return "ask", f"Var olan bir dosyanin uzerine yazilacak (geri alinamaz): {full}"
+    return "ok", ""
+
+
+def _agent_path(filepath: str, write: bool = False) -> str:
+    """Ajan araclarinin yol cozumleyicisi. 'ask' seviyesi onay kapisinda (orchestrator) cozulur; burada yalniz 'deny' engellenir."""
+    full = resolve_path(filepath)
+    level, why = path_risk(filepath, write)
+    if level == "deny":
+        raise ValueError(why)
     return full
 
 
@@ -168,7 +243,7 @@ def _format_run(code: int, out: str, err: str) -> str:
 def list_files(directory: str = ".", pattern: str = "*") -> list:
     """Calisma alanindaki dosyalari (alt klasorler dahil, goreli yol) listeler."""
     try:
-        root = WORKSPACE_DIR if str(directory or ".").strip() in (".", "") else _safe_path(directory)
+        root = WORKSPACE_DIR if str(directory or ".").strip() in (".", "") else _agent_path(directory)
         os.makedirs(root, exist_ok=True)
         found = []
         for dp, dn, fn in os.walk(root):
@@ -187,7 +262,7 @@ def list_files(directory: str = ".", pattern: str = "*") -> list:
 def read_file(filepath: str, start_line=None, end_line=None) -> str:
     """Dosyayi okur. start_line/end_line verilirse satir numarali parca doner."""
     try:
-        path = _safe_path(filepath)
+        path = _agent_path(filepath)
         if not os.path.isfile(path):
             return ERR + f"'{filepath}' dosyasi bulunamadi."
         if os.path.getsize(path) > MAX_FILE:
@@ -212,7 +287,7 @@ def read_file(filepath: str, start_line=None, end_line=None) -> str:
 def write_file(filepath: str, content: str) -> str:
     """Calisma alaninda dosya olusturur veya uzerine yazar."""
     try:
-        path = _safe_path(filepath)
+        path = _agent_path(filepath, write=True)
         content = str(content)
         if len(content) > MAX_FILE:
             return ERR + "Icerik cok buyuk."
@@ -227,7 +302,7 @@ def write_file(filepath: str, content: str) -> str:
 def apply_patch(filepath: str, target_snippet: str, replacement_snippet: str) -> str:
     """Dosyada TEK bir yerde gecen blogu degistirir (birden fazla eslesme reddedilir)."""
     try:
-        path = _safe_path(filepath)
+        path = _agent_path(filepath, write=True)
         if not os.path.isfile(path):
             return ERR + f"'{filepath}' bulunamadi."
         if not target_snippet:
@@ -256,7 +331,7 @@ def apply_patch(filepath: str, target_snippet: str, replacement_snippet: str) ->
 def delete_file(filepath: str) -> str:
     """Calisma alanindaki tek bir dosyayi siler."""
     try:
-        path = _safe_path(filepath)
+        path = _agent_path(filepath, write=True)
         if not os.path.isfile(path):
             return ERR + f"'{filepath}' dosya degil veya bulunamadi."
         os.remove(path)
@@ -272,7 +347,7 @@ def search_codebase(pattern: str, target_dir: str = ".") -> str:
         return ERR + "Aranacak ifade bos."
     results = []
     try:
-        root = WORKSPACE_DIR if str(target_dir or ".").strip() in (".", "") else _safe_path(target_dir)
+        root = WORKSPACE_DIR if str(target_dir or ".").strip() in (".", "") else _agent_path(target_dir)
         for dp, dn, fn in os.walk(root):
             dn[:] = [d for d in dn if d not in IGNORED_DIRS]
             for file in fn:
@@ -635,7 +710,7 @@ def save_upload(filename: str, data: bytes) -> tuple:
 def read_document(filename: str, max_chars: int = 12000) -> str:
     """CSV/TXT/JSON/XLSX/PDF/DOCX belgelerinin metnini okur (yuklenen dosyalar workspace/uploads altindadir)."""
     try:
-        path = _safe_path(filename)
+        path = _agent_path(filename)
         ext = os.path.splitext(path)[1].lower()
         if not os.path.isfile(path):
             return ERR + f"'{filename}' bulunamadi."
@@ -1145,6 +1220,8 @@ class NodusTools:
     save_user_file = staticmethod(save_user_file)
     open_app = staticmethod(open_app)
     user_folder = staticmethod(user_folder)
+    path_risk = staticmethod(path_risk)
+    resolve_path = staticmethod(resolve_path)
     sandbox_status = staticmethod(sandbox_status)
     update_plan = staticmethod(update_plan)
     remember = staticmethod(remember)
