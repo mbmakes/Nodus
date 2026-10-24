@@ -204,3 +204,22 @@ def test_failed_verification_triggers_one_recalculation(srv, monkeypatch):
     r = requests.post(base + "/api/chat", headers=H, data={"sid": sid, "text": "boru kaybi", "model": "auto", "verify": "1"})
     last = events(r)[-1]["message"]["content"]
     assert "110.9 kPa" in last and "yeniden yapıldı" in last and "uyarısı" not in last and "28.5" not in last.split("yeniden yapıldı")[1]
+
+
+def test_browser_candidates_per_platform(srv):
+    server, _ = srv
+    mac = server.browser_candidates("darwin", {})
+    assert "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" in mac
+    assert "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" in mac
+    assert all("/Contents/MacOS/" in p for p in mac)
+    win = server.browser_candidates("win32", {"ProgramFiles": "C:/P", "LOCALAPPDATA": "C:/L"})
+    assert any(p.endswith("msedge.exe") for p in win) and any(p.endswith("chrome.exe") for p in win)
+    assert server.browser_candidates("win32", {}) == []          # ortam degiskeni yoksa yol uretme
+    assert server.browser_candidates("linux", {}) == []          # Linux: PATH'te aranir
+
+
+def test_unix_launchers_use_lf_line_endings():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for name in ("run_nodus.sh", "run_nodus.command"):
+        data = open(os.path.join(root, name), "rb").read()
+        assert data.startswith(b"#!/usr/bin/env bash\n") and b"\r" not in data, name   # CRLF macOS'ta "bad interpreter" verir

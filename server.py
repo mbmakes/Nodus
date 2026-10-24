@@ -7,8 +7,10 @@ import mimetypes
 import os
 import queue
 import re
+import shutil
 import socket
 import subprocess
+import sys
 import threading
 import time
 import webbrowser
@@ -642,17 +644,33 @@ app = Starlette(
 # ------------------------------------------------------------------
 # Baslatma: tam ekran uygulama penceresi (Edge/Chrome --app), yoksa varsayilan tarayici
 # ------------------------------------------------------------------
+def browser_candidates(platform: str, env: dict) -> list:
+    """--app destekleyen (Chromium tabanli) tarayici yollari, oncelik sirasiyla. Linux icin bos: PATH'te aranir."""
+    if platform == "darwin":
+        names = ("Microsoft Edge", "Google Chrome", "Chromium", "Brave Browser")
+        roots = ("/Applications", os.path.expanduser("~/Applications"))
+        return [f"{r}/{n}.app/Contents/MacOS/{n}" for n in names for r in roots]
+    if platform.startswith("win"):
+        pairs = (
+            (env.get("ProgramFiles(x86)"), r"Microsoft\Edge\Application\msedge.exe"),
+            (env.get("ProgramFiles"), r"Microsoft\Edge\Application\msedge.exe"),
+            (env.get("ProgramFiles"), r"Google\Chrome\Application\chrome.exe"),
+            (env.get("ProgramFiles(x86)"), r"Google\Chrome\Application\chrome.exe"),
+            (env.get("LOCALAPPDATA"), r"Google\Chrome\Application\chrome.exe"),
+        )
+        return [os.path.join(base, rel) for base, rel in pairs if base]
+    return []
+
+
 def _browser_exe():
-    env = os.environ
-    for base, rel in (
-        (env.get("ProgramFiles(x86)"), r"Microsoft\Edge\Application\msedge.exe"),
-        (env.get("ProgramFiles"), r"Microsoft\Edge\Application\msedge.exe"),
-        (env.get("ProgramFiles"), r"Google\Chrome\Application\chrome.exe"),
-        (env.get("ProgramFiles(x86)"), r"Google\Chrome\Application\chrome.exe"),
-        (env.get("LOCALAPPDATA"), r"Google\Chrome\Application\chrome.exe"),
-    ):
-        if base and os.path.isfile(os.path.join(base, rel)):
-            return os.path.join(base, rel)
+    for p in browser_candidates(sys.platform, os.environ):
+        if os.path.isfile(p):
+            return p
+    if not sys.platform.startswith("win") and sys.platform != "darwin":
+        for name in ("microsoft-edge", "google-chrome", "chromium", "chromium-browser"):
+            found = shutil.which(name)
+            if found:
+                return found
     return None
 
 

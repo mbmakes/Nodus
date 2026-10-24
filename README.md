@@ -38,16 +38,29 @@ Bir görevi Türkçe yazarsın; Nodus planlar, doğru aracı seçer, hesabı yap
 
 ## Kurulum
 
-Gereksinimler: **Windows**, **Python 3.12**, en az bir sağlayıcı anahtarı (ücretsiz katmanlar yeterli).
+Gereksinimler: **Python 3.12** ve en az bir sağlayıcı anahtarı (ücretsiz katmanlar yeterli).
+
+**Windows**
 
 ```bash
-git clone https://github.com/mbmakes/nodus.git
-cd nodus
+git clone https://github.com/mbmakes/Nodus.git
+cd Nodus
 copy .env.example .env      # ardından .env içine anahtarlarını yaz
 run_nodus.bat
 ```
 
-`run_nodus.bat` eksik kütüphaneleri otomatik kurar, sunucuyu başlatır ve arayüzü Edge/Chrome'da uygulama penceresi olarak açar (`http://127.0.0.1:8765`).
+**macOS** *(deneysel: gerçek bir Mac'te henüz doğrulanmadı, bkz. [Sınırlar](#sınırlar-ve-beta-notları))*
+
+```bash
+git clone https://github.com/mbmakes/Nodus.git
+cd Nodus
+cp .env.example .env        # ardından .env içine anahtarlarını yaz
+./run_nodus.sh              # ya da Finder'da run_nodus.command'a çift tıkla
+```
+
+İlk açılışta `.venv` oluşturulur ve kütüphaneler oraya kurulur (Homebrew Python'u sistem genelinde `pip` kurulumunu reddettiği için). Python yoksa: `brew install python@3.12`. Sesli komut için tarayıcı mikrofon izni, ekran görüntüsü aracı için macOS "Ekran Kaydı" izni gerekebilir.
+
+Başlatıcılar eksik kütüphaneleri otomatik kurar, sunucuyu başlatır ve arayüzü Edge/Chrome'da uygulama penceresi olarak açar (`http://127.0.0.1:8765`); bulamazsa varsayılan tarayıcıyı kullanır.
 
 Anahtarlar (`.env`) — en az biri gerekli:
 
@@ -94,14 +107,14 @@ Tarayıcı (web/)  ──SSE──►  server.py (Starlette)
 ## Testler
 
 ```bash
-python -m pytest tests -q -p no:cacheprovider      # 48 test
+python -m pytest tests -q -p no:cacheprovider      # 50 test
 ```
 
 Ajan/araç davranışı, güvenlik politikası, sunucu uçları (gerçek uvicorn + sahte model), durdurma ve süreç öldürme, rapor, arama ve hesap doğrulukları kapsanır.
 
 ## Sınırlar ve beta notları
 
-- Yalnızca **Windows** üzerinde denendi.
+- **Windows**'ta denendi. **macOS desteği deneysel:** başlatıcı ve tarayıcı penceresi mantığı Mac için yazıldı, ama gerçek bir Mac'te henüz çalıştırılmadı. Sorun yaşarsan Issues'a yaz.
 - Kod/komut çalıştırma, Docker kurulmadıkça işletim sistemi düzeyinde izole değildir.
 - Model hesapları hatalı olabilir; hazır hesaplar (`eng_calc`) ve çapraz doğrulama bunu azaltır ama ortadan kaldırmaz. Sonuçları kritik işlerde bağımsız doğrula.
 - Ücretsiz sağlayıcı katmanlarında kota dolabilir; Nodus yedeğe geçer ama yanıt süresi uzayabilir.
@@ -113,8 +126,8 @@ Ajan/araç davranışı, güvenlik politikası, sunucu uçları (gerçek uvicorn
 - Daha fazla doğrulanmış hesap (ısı transferi, pompa/fan seçimi, mil ve cıvata hesapları)
 - Docker sandbox'ı varsayılan yapma ve kurulum sihirbazı
 - Cevap içi grafikler için etkileşimli önizleme
-- macOS/Linux başlatıcıları
-- CI (GitHub Actions)
+- macOS desteğini gerçek donanımda doğrulama, Linux başlatıcısı
+- CI (GitHub Actions: Windows, macOS, Linux)
 
 ## Lisans
 

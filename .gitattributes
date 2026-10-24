@@ -1,0 +1,4 @@
+# Baslaticilar satir sonunu korumali: .bat CRLF, kabuk betikleri LF (CRLF'li .sh macOS/Linux'ta calismaz)
+*.bat text eol=crlf
+*.sh text eol=lf
+*.command text eol=lf
