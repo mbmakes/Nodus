@@ -430,3 +430,9 @@ def test_install_script_picks_highest_version_not_first_in_list(tmp_path):
     assert pick(["v1.1.1-beta", "v1.2-beta", "v1.1-beta"]) == "REF=v1.2-beta"
     assert pick(["v1.2-beta", "v1.2"]) == "REF=v1.2"                             # kararli, on-surumden buyuk
     assert pick(["v1.0-beta-macos", "v1.0-beta"]) == "REF=v1.0-beta"             # platforma ozel etiket atlanir
+
+
+def test_system_prompt_tells_model_os_and_shell_access():
+    from agent_core import NodusAgent
+    p = NodusAgent()._build_system_prompt()
+    assert "SISTEM ERISIMI" in p and "run_shell" in p and os.path.expanduser("~") in p

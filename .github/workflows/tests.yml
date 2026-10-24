@@ -38,7 +38,7 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          NODUS_APP_DIR="$RUNNER_TEMP/apps" bash scripts/make_app.sh
+          NODUS_NO_DOCK=1 NODUS_APP_DIR="$RUNNER_TEMP/apps" bash scripts/make_app.sh
           APP="$RUNNER_TEMP/apps/Nodus.app"
           plutil -lint "$APP/Contents/Info.plist"
           test -x "$APP/Contents/MacOS/Nodus"
@@ -50,6 +50,13 @@ jobs:
           mkdir -p "$RUNNER_TEMP/fakebin"; printf '#!/bin/sh\necho "OPEN $*" > "%s/open.txt"\n' "$RUNNER_TEMP" > "$RUNNER_TEMP/fakebin/open"; chmod +x "$RUNNER_TEMP/fakebin/open"
           NODUS_PORT=8793 PATH="$RUNNER_TEMP/fakebin:$PATH" "$APP/Contents/MacOS/Nodus"
           grep -q "http://127.0.0.1:8793/" "$RUNNER_TEMP/open.txt"
+          # Nodus kapaliyken: ilk tiklama Terminal'i acar, 90 sn icindeki ikinci tiklama ikinci pencere ACMAZ
+          export TMPDIR="$RUNNER_TEMP/lk"; mkdir -p "$TMPDIR"; rm -f "$RUNNER_TEMP/open.txt"
+          NODUS_PORT=8794 PATH="$RUNNER_TEMP/fakebin:$PATH" "$APP/Contents/MacOS/Nodus"
+          grep -q -- "-a Terminal" "$RUNNER_TEMP/open.txt"
+          rm -f "$RUNNER_TEMP/open.txt"
+          NODUS_PORT=8794 PATH="$RUNNER_TEMP/fakebin:$PATH" "$APP/Contents/MacOS/Nodus"
+          test ! -f "$RUNNER_TEMP/open.txt"
       - name: Tek satir kurulum + Python'u kendi kuran akis (install.sh, uv)
         if: runner.os != 'Windows'
         shell: bash

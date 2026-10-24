@@ -74,11 +74,20 @@ elif [ -z "$NODUS_NO_VENV" ]; then
     PY=".venv/bin/python"
 fi
 
-echo "[1/2] Gerekli kutuphaneler denetleniyor (ilk seferde birkac dakika surebilir)..."
-if ! PIP_OUT=$("$PY" -m pip install -r requirements.txt --quiet --disable-pip-version-check 2>&1); then
-    echo "[UYARI] Kutuphane kurulumunda hata (internet yok ya da Python surumu uyumsuz olabilir). Son satirlar:"
-    echo "$PIP_OUT" | tail -8
-    echo "        Kurulu olanlarla devam ediliyor..."
+# shortcut: damga yalniz .venv icin tutulur; requirements.txt degismediyse pip denetimi atlanir (acilis hizlanir). Elle paket silinirse .venv/.nodus_req silinmeli.
+STAMP=""; [ "$PY" = ".venv/bin/python" ] && STAMP=".venv/.nodus_req"
+REQ_SUM=$(cksum < requirements.txt)
+if [ -n "$STAMP" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$REQ_SUM" ]; then
+    echo "[1/2] Kutuphaneler hazir."
+else
+    echo "[1/2] Gerekli kutuphaneler denetleniyor (ilk seferde birkac dakika surebilir)..."
+    if PIP_OUT=$("$PY" -m pip install -r requirements.txt --quiet --disable-pip-version-check 2>&1); then
+        [ -n "$STAMP" ] && echo "$REQ_SUM" > "$STAMP"
+    else
+        echo "[UYARI] Kutuphane kurulumunda hata (internet yok ya da Python surumu uyumsuz olabilir). Son satirlar:"
+        echo "$PIP_OUT" | tail -8
+        echo "        Kurulu olanlarla devam ediliyor..."
+    fi
 fi
 
 echo "[2/2] Nodus penceresi aciliyor... Kapatmak icin Ctrl + C."
