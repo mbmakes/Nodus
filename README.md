@@ -144,7 +144,7 @@ Tarayıcı (web/)  ──SSE──►  server.py (Starlette)
 ## Testler
 
 ```bash
-python -m pytest tests -q -p no:cacheprovider      # 66 test
+python -m pytest tests -q -p no:cacheprovider      # 67 test
 ```
 
 Ajan/araç davranışı, güvenlik politikası, sunucu uçları (gerçek uvicorn + sahte model), durdurma ve süreç öldürme, rapor, arama ve hesap doğrulukları kapsanır.

@@ -21,6 +21,13 @@ from urllib.parse import quote
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(BASE_DIR)
 
+# Yonlendirilmis/gizli cikti Turkce olmayan Windows'ta cp1252'dir ve 'ı' gibi harfleri kodlayamaz; sunucu bu yuzden coker
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError, OSError):
+        pass
+
 import requests
 from dotenv import load_dotenv
 

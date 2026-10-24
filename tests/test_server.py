@@ -375,3 +375,36 @@ def test_setup_keys_rejects_bad_input_without_writing(srv, monkeypatch, tmp_path
         assert post({"gemini": KEY}).status_code == 409                              # gorev calisirken yeniden baslatma yok
     finally:
         server.STATE[sid].busy = False
+
+
+def test_server_starts_when_stdout_cannot_encode_turkish(tmp_path):
+    """Turkce olmayan Windows'ta (cp1252) yonlendirilmis cikti 'ı' harfini kodlayamaz; sunucu yine de acilmali."""
+    import subprocess
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    env = {**os.environ, "PYTHONIOENCODING": "cp1252", "NODUS_PORT": str(port), "NODUS_NO_WINDOW": "1",
+           "NODUS_NO_UPDATE_CHECK": "1", "NODUS_MEMORY_DIR": str(tmp_path / "mem")}
+    env.pop("PYTHONUTF8", None)
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    p = subprocess.Popen([sys.executable, "server.py"], cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        ok = False
+        for _ in range(100):
+            if p.poll() is not None:
+                break
+            try:
+                ok = requests.get(f"http://127.0.0.1:{port}/api/ping", timeout=1).json().get("app") == "nodus"
+            except Exception:
+                ok = False
+            if ok:
+                break
+            time.sleep(0.2)
+        err = b"" if p.poll() is None else p.stderr.read()
+        assert ok, err.decode("utf-8", "replace")[-600:]
+    finally:
+        p.terminate()
+        try:
+            p.wait(5)
+        except Exception:
+            p.kill()
