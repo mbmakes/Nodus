@@ -12,6 +12,7 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -53,9 +54,17 @@ jobs:
           $env:NODUS_HOME = Join-Path $env:RUNNER_TEMP 'nodus-install'
           $env:NODUS_FORCE_UV = '1'; $env:UV_PYTHON_PREFERENCE = 'only-managed'; $env:NODUS_YES = '1'; $env:NODUS_NO_WINDOW = '1'; $env:NODUS_NO_UPDATE_CHECK = '1'; $env:NODUS_PORT = '8792'
           $p = Start-Process pwsh -ArgumentList '-NoProfile', '-File', 'install.ps1' -PassThru -RedirectStandardOutput install.log -RedirectStandardError install.err
-          for ($i = 1; $i -le 1200; $i++) {
-            try { $r = Invoke-RestMethod http://127.0.0.1:8792/api/ping -TimeoutSec 2; if ($r.app -eq 'nodus') { "ping ok (${i}s)"; Get-Content install.log -Tail 15; exit 0 } } catch { }
-            Start-Sleep -Seconds 1
+          $ok = $false
+          try {
+            for ($i = 1; $i -le 900; $i++) {
+              try { $r = Invoke-RestMethod http://127.0.0.1:8792/api/ping -TimeoutSec 2; if ($r.app -eq 'nodus') { $ok = $true; "ping ok (${i}s)"; break } } catch { }
+              Start-Sleep -Seconds 1
+            }
+            Get-Content install.log -Tail 20 -ErrorAction SilentlyContinue
+            Get-Content install.err -Tail 20 -ErrorAction SilentlyContinue
+          } finally {
+            # arka plan sureci kapatilmazsa adim bitmez: once kendi surec agacimizi, sonra test portundaki dinleyiciyi kapat
+            taskkill /F /T /PID $p.Id 2>$null | Out-Null
+            Get-NetTCPConnection -LocalPort 8792 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
           }
-          Get-Content install.log, install.err
-          exit 1
+          if (-not $ok) { exit 1 }
