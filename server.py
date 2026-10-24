@@ -882,6 +882,14 @@ def _nodus_running(port: int) -> bool:
         return False
 
 
+def _open_when_ready(url: str, port: int, timeout: float = 90.0):
+    """Sunucu cevap verene kadar bekler, sonra pencereyi acar (sabit bekleme yavas acilista 'baglanilamiyor' sayfasi gosteriyordu)."""
+    end = time.time() + timeout
+    while time.time() < end and not _nodus_running(port):
+        time.sleep(0.3)
+    open_window(url)   # zaman asiminda da dene: kullanici en azindan hata sayfasini gorur
+
+
 def main():
     import uvicorn
     port = int(os.getenv("NODUS_PORT", "8765"))
@@ -895,7 +903,7 @@ def main():
         open_window(url)
         return
     if not os.getenv("NODUS_NO_WINDOW"):
-        threading.Timer(1.2, open_window, args=(url,)).start()
+        threading.Thread(target=_open_when_ready, args=(url, port), daemon=True).start()
     print(f"Nodus hazır: {url}   (kapatmak için Ctrl+C)")
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
 

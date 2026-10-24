@@ -436,3 +436,17 @@ def test_system_prompt_tells_model_os_and_shell_access():
     from agent_core import NodusAgent
     p = NodusAgent()._build_system_prompt()
     assert "SISTEM ERISIMI" in p and "run_shell" in p and os.path.expanduser("~") in p
+
+
+def test_window_opens_only_after_server_is_ready(monkeypatch):
+    import server
+    calls, state = [], {"n": 0}
+
+    def fake_running(port):
+        state["n"] += 1
+        return state["n"] >= 3   # ilk iki yoklamada sunucu hazir degil
+
+    monkeypatch.setattr(server, "_nodus_running", fake_running)
+    monkeypatch.setattr(server, "open_window", lambda url: calls.append((url, state["n"])))
+    server._open_when_ready("http://127.0.0.1:1", 1, timeout=10)
+    assert calls == [("http://127.0.0.1:1", 3)]
