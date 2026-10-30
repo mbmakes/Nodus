@@ -204,6 +204,12 @@ KULLANABILECEGIN ARACLAR:
    - Mil burulmasi: {{"calc": "shaft_torsion", "params": {{"power_kw": 15, "rpm": 1450, "d_mm": 40, "length_m": 0.5}}}} (power_kw+rpm yerine torque_nm; length_m verilirse burulma acisi da hesaplanir)
    - Civata kontrolu: {{"calc": "bolt_check", "params": {{"size": "M12", "grade": "8.8", "axial_n": 20000, "shear_n": 5000, "n_bolts": 4}}}} (size M6-M30 ya da area_mm2; sinif 4.6-12.9)
    - Duvardan isi gecisi: {{"calc": "wall_heat", "params": {{"layers": [{{"thickness_mm": 200, "k_wm": 0.8}}, {{"thickness_mm": 50, "k_wm": 0.035}}], "t_in_c": 20, "t_out_c": -5, "h_in": 10, "h_out": 25, "area_m2": 12}}}}
+   - Esanjor (LMTD): {{"calc": "heat_exchanger", "params": {{"flow": "counter|parallel", "t_hot_in": 100, "t_hot_out": 60, "t_cold_in": 20, "t_cold_out": 40, "q_kw": 10, "u_wm2k": 500}}}} (q_kw yerine m_hot_kgs + cp_hot_kjkgk; u_wm2k verilirse gerekli alan da cikar)
+   - Kolon burkulmasi (Euler): {{"calc": "column_buckling", "params": {{"length_m": 2, "end": "pinned|fixed_free|fixed_pinned|fixed_fixed", "section": "rect|hollow_square|circle", "b_mm": 40, "h_mm": 40, "load_n": 20000, "E_gpa": 210, "yield_mpa": 250}}}}
+   - Orifis debisi: {{"calc": "orifice_flow", "params": {{"pipe_d_mm": 100, "orifice_d_mm": 50, "dp_kpa": 10, "density_kgm3": 1000, "cd": 0.61}}}} (beta 0.1-0.75)
+   - Rulman omru: {{"calc": "bearing_life", "params": {{"c_kn": 30, "p_kn": 5, "rpm": 1500, "type": "ball|roller"}}}}
+   - Nemli hava: {{"calc": "psychrometrics", "params": {{"t_c": 25, "rh_percent": 50, "pressure_bar": 1.01325}}}}
+   - NPSH (mevcut): {{"calc": "npsh_available", "params": {{"temperature_c": 20, "surface_pressure_bar": 1.01325, "static_head_m": 2, "loss_m": 1.5, "npsh_required_m": 3}}}}
 22. save_user_file: Masaustu/Belgeler/Indirilenler klasorune METIN dosyasi yazar (var olan dosyanin uzerine yazmaz; yeni dosya icin guvenli kisayol; write_file mutlak yolla da calisir). Onay gerekir. {{"folder": "desktop|documents|downloads", "filename": "not.txt", "content": "icerik", "overwrite": false}}
 23. open_app: Uygulama, dosya ya da web adresi acar ve beklemez. Onay gerekir. {{"target": "Safari"}} (macOS uygulama adi; Windows: notepad, chrome; dosya yolu ya da https://... adresi de olur)
 {plan_block}

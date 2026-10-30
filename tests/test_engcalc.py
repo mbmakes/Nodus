@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """engcalc.py (dogrulanmis hesaplar) ve eng_calc aracinin entegrasyonu."""
+import math
 import os
 import re
 import sys
@@ -56,6 +57,34 @@ def test_pump_shaft_bolt_wall_hand_calcs():
     w = engcalc.run("wall_heat", {"layers": [{"thickness_mm": 200, "k_wm": 0.8}], "t_in_c": 20, "t_out_c": -5})
     assert cell(w, "Toplam direnç") == pytest.approx(0.1 + 0.25 + 0.04)
     assert cell(w, "Isı akısı q") == pytest.approx(25 / 0.39, rel=0.002)
+
+
+def test_exchanger_buckling_orifice_bearing_psychro_npsh_hand_calcs():
+    hx = engcalc.run("heat_exchanger", {"t_hot_in": 100, "t_hot_out": 60, "t_cold_in": 20, "t_cold_out": 40, "q_kw": 10, "u_wm2k": 500})
+    assert cell(hx, "LMTD") == pytest.approx(20 / math.log(1.5), rel=0.001)
+    assert cell(hx, "Gerekli alan A") == pytest.approx(10000 / (500 * 20 / math.log(1.5)), rel=0.002)
+    col = engcalc.run("column_buckling", {"length_m": 0.5, "section": "rect", "b_mm": 20, "h_mm": 20, "load_n": 50000})
+    assert cell(col, "Kritik burkulma yükü Pcr") == pytest.approx(math.pi ** 2 * 210e9 * (20 * 20 ** 3 / 12 * 1e-12) / 0.25 / 1000, rel=0.002)
+    assert "Euler formülü geçersiz" in col                              # sigma_cr 276 MPa > akma 250 MPa
+    ori = engcalc.run("orifice_flow", {"pipe_d_mm": 100, "orifice_d_mm": 50, "dp_kpa": 10})
+    assert cell(ori, "Debi Q") == pytest.approx(0.61 * math.pi * 0.05 ** 2 / 4 * math.sqrt(2 * 10000 / 1000) / math.sqrt(1 - 0.5 ** 4) * 1000, rel=0.002)
+    assert cell(engcalc.run("bearing_life", {"c_kn": 30, "p_kn": 5, "rpm": 1500}), "L10h") == pytest.approx(2400)
+    assert cell(engcalc.run("psychrometrics", {"t_c": 25, "rh_percent": 50}), "Çiğ noktası") == pytest.approx(13.9, abs=0.1)
+    npsh = engcalc.run("npsh_available", {"temperature_c": 20, "static_head_m": 2, "loss_m": 1.5})
+    assert cell(npsh, "NPSH mevcut") == pytest.approx((101325 - 2339) / (998.2 * 9.80665) + 0.5, rel=0.002)
+    assert "kavitasyon" in engcalc.run("npsh_available", {"temperature_c": 20, "npsh_required_m": 10.5})
+
+
+@pytest.mark.parametrize("calc,params", [
+    ("heat_exchanger", {"t_hot_in": 50, "t_hot_out": 40, "t_cold_in": 60, "t_cold_out": 70, "q_kw": 1}),   # sicak taraf soguktan soguk
+    ("column_buckling", {"length_m": 1, "end": "x", "b_mm": 10, "h_mm": 10}),
+    ("orifice_flow", {"pipe_d_mm": 100, "orifice_d_mm": 95, "dp_kpa": 10}),                                # beta > 0.75
+    ("bearing_life", {"c_kn": 1, "p_kn": 1, "rpm": 100, "type": "x"}),
+    ("psychrometrics", {"t_c": 20, "rh_percent": 150}),
+])
+def test_new_calcs_reject_bad_input(calc, params):
+    with pytest.raises(ValueError):
+        engcalc.run(calc, params)
 
 
 @pytest.mark.parametrize("calc,params", [

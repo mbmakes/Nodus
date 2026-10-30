@@ -242,7 +242,8 @@ class Router:
     # ---------------- kesif ----------------
     def available(self) -> list:
         """Anahtari tanimli (veya yerel) saglayicilar."""
-        return [p for p, c in PROVIDERS.items() if c.get("local") or self._key(p)]
+        # Yerel Ollama yalniz NODUS_OLLAMA=1 ile acilir: aksi halde arayuzde hep "ollama" noktasi gorunuyordu
+        return [p for p, c in PROVIDERS.items() if (c.get("local") and os.getenv("NODUS_OLLAMA")) or self._key(p)]
 
     def models(self, prov: str) -> list:
         with self._lock:
@@ -299,10 +300,11 @@ class Router:
 
     # ---------------- sohbet ----------------
     def chat(self, messages: list, kind: str = "fast", preferred: str = None, max_attempts: int = 8,
-             timeout=(8, 30), temperature: float = 0.2, deadline: float = 140,
+             timeout=None, temperature: float = 0.2, deadline: float = 140,
              stream_cb=None, avoid: tuple = None):
         """(metin, (saglayici, model), hatalar). Basarisizsa metin None.
         stream_cb(o_ana_kadar_metin) verilirse yanit akarak gelir; yedeklemede metin bastan baslar."""
+        timeout = timeout or ((8, 75) if kind == "heavy" else (8, 30))   # dusunen agir modeller ilk token'a 30 sn'den gec gelebilir
         errors, tried, start, prov_fails = [], 0, time.time(), {}
         need = int(sum(len(str(m.get("content", ""))) for m in messages) / 3) + 600   # kaba token tahmini
         for prov, model in self.candidates(kind, preferred, avoid):
@@ -322,7 +324,7 @@ class Router:
                 r = requests.post(cfg["base"] + "/chat/completions", headers=self._headers(prov),
                                   json=payload, timeout=timeout, stream=bool(stream_cb))
             except Exception as e:  # zaman asimi: yavas modeli bir sure atla
-                self._penalize(prov, model, 3600 if isinstance(e, requests.Timeout) else 60)
+                self._penalize(prov, model, 900 if isinstance(e, requests.Timeout) else 60)   # tek yavas cevap modeli bir saat susturmasin
                 errors.append(f"{prov}/{model}: {type(e).__name__}")
                 prov_fails[prov] = prov_fails.get(prov, 0) + 1
                 continue

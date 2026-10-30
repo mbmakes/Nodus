@@ -342,7 +342,7 @@ def test_bootstrap_reports_missing_keys_and_ping_has_boot_id(srv, monkeypatch):
     for e in server.KEY_ENV.values():
         monkeypatch.delenv(e, raising=False)
     b = requests.get(base + "/api/bootstrap", headers=H).json()
-    assert b["needs_keys"] is True and b["keys"] == {"gemini": False, "groq": False, "openrouter": False}
+    assert b["needs_keys"] is True and b["keys"] == dict.fromkeys(["gemini", "groq", "openrouter", "cerebras", "mistral"], False)
     monkeypatch.setenv("GEMINI_API_KEY", KEY)
     b = requests.get(base + "/api/bootstrap", headers=H).json()
     assert b["needs_keys"] is False and b["keys"]["gemini"] is True and KEY not in str(b)        # anahtar asla geri donmez

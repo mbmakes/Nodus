@@ -754,6 +754,14 @@ def test_fetch_url_decodes_turkish_page_without_charset_header(monkeypatch):
     assert tools._decode_body("Merhaba ş".encode("utf-8")[:-1], None) == "Merhaba "   # 1 MB'ta kesilen harf cp1254 bozuntusuna dusmez
 
 
+def test_local_ollama_provider_is_opt_in(monkeypatch):
+    from providers import Router
+    monkeypatch.delenv("NODUS_OLLAMA", raising=False)
+    assert "ollama" not in Router().available()                          # arayuzde artik hayalet "ollama" noktasi yok
+    monkeypatch.setenv("NODUS_OLLAMA", "1")
+    assert "ollama" in Router().available()
+
+
 def test_long_code_runs_from_a_temp_file_and_cleans_up():
     code = "# " + "a" * (tools.MAX_ARG_CODE * 5) + "\nprint('uzun kod tamam')"   # Windows'ta '-c' ile WinError 206 verirdi
     assert "uzun kod tamam" in tools.execute_python_code(code)

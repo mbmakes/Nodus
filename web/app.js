@@ -650,7 +650,7 @@ async function removeSession(id, skipConfirm) {
 }
 
 // ------------------------------------------------------------------ ilk kurulum: anahtar ekleme
-const KEY_PROVIDERS = [['gemini', 'Gemini'], ['groq', 'Groq'], ['openrouter', 'OpenRouter']];
+const KEY_PROVIDERS = [['gemini', 'Gemini'], ['groq', 'Groq'], ['openrouter', 'OpenRouter'], ['cerebras', 'Cerebras'], ['mistral', 'Mistral']];
 const setup = { busy: false, error: '', text: '', vals: {} };
 
 function paintSetup() {
@@ -690,6 +690,8 @@ function paintSetup() {
       row('gemini', 'Gemini (önerilen)', 'Ağır hesaplar ve görsel okuma için.'),
       row('groq', 'Groq (isteğe bağlı)', 'Hızlı cevaplar ve sesli komut için. console.groq.com'),
       row('openrouter', 'OpenRouter (isteğe bağlı)', 'Yedek model havuzu. openrouter.ai'),
+      row('cerebras', 'Cerebras (isteğe bağlı)', 'Çok hızlı cevaplar. cloud.cerebras.ai'),
+      row('mistral', 'Mistral (isteğe bağlı)', 'Ek yedek havuz. console.mistral.ai'),
       ...(setup.error ? [el('p', { class: 'upd-err', role: 'alert', text: setup.error })] : []),
       ...(setup.busy ? [el('div', { class: 'status-line' }, el('i', { class: 'spin' }), setup.text)] : []),
       el('div', { class: 'row-btns' },

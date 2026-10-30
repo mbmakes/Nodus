@@ -276,8 +276,151 @@ def wall_heat(params: dict) -> str:
             f"| Isı kaybı (A={area:g} m²) | {q * area:.5g} | W |\n\nq = ΔT/ΣR;  R = L/k (iletim), 1/h (taşınım)")
 
 
+def heat_exchanger(params: dict) -> str:
+    """Esanjor LMTD yontemi. params: flow=counter|parallel, t_hot_in, t_hot_out, t_cold_in, t_cold_out (°C),
+    q_kw | (m_hot_kgs + cp_hot_kjkgk=4.18), u_wm2k (verilirse gerekli alan da hesaplanir)"""
+    flow = str(params.get("flow", "counter")).lower()
+    if flow not in ("counter", "parallel"):
+        raise ValueError("flow counter (karşı akış) veya parallel (paralel akış) olmalı.")
+    th1, th2 = _num(params, "t_hot_in", positive=False), _num(params, "t_hot_out", positive=False)
+    tc1, tc2 = _num(params, "t_cold_in", positive=False), _num(params, "t_cold_out", positive=False)
+    d1, d2 = (th1 - tc2, th2 - tc1) if flow == "counter" else (th1 - tc1, th2 - tc2)
+    if d1 <= 0 or d2 <= 0:
+        raise ValueError(f"Uç sıcaklık farkları pozitif olmalı (ΔT1={d1:g}, ΔT2={d2:g}); sıcaklıkları ve akış yönünü kontrol et.")
+    lmtd = d1 if math.isclose(d1, d2, rel_tol=1e-9) else (d1 - d2) / math.log(d1 / d2)
+    if "q_kw" in params:
+        q = _num(params, "q_kw") * 1000
+    else:
+        q = _num(params, "m_hot_kgs") * _num(params, "cp_hot_kjkgk", 4.18) * 1000 * (th1 - th2)
+        if q <= 0:
+            raise ValueError("Sıcak akışkan soğumalı (t_hot_in > t_hot_out) ya da q_kw ver.")
+    rows = (f"| Akış düzeni | {'karşı akış' if flow == 'counter' else 'paralel akış'} | |\n| ΔT1 / ΔT2 | {d1:.4g} / {d2:.4g} | K |\n"
+            f"| **LMTD** | **{lmtd:.4g}** | K |\n| Isıl güç Q | {q / 1000:.5g} | kW |\n")
+    if "u_wm2k" in params:
+        u = _num(params, "u_wm2k")
+        rows += f"| Toplam ısı geçiş katsayısı U | {u:g} | W/m²·K |\n| **Gerekli alan A** | **{q / (u * lmtd):.4g}** | m² |\n"
+    return ("**Eşanjör (LMTD yöntemi)**\n\n| Büyüklük | Değer | Birim |\n|---|---:|---|\n" + rows +
+            "\nLMTD = (ΔT1−ΔT2)/ln(ΔT1/ΔT2);  Q = U·A·LMTD (düzeltme çarpanı F=1: tek geçişli, saf karşı/paralel akış)")
+
+
+_BUCKLING_K = {"pinned": 1.0, "fixed_free": 2.0, "fixed_pinned": 0.7, "fixed_fixed": 0.5}
+
+
+def _min_section(params: dict):
+    """(en kucuk I m^4, alan m^2 | None, aciklama). Burkulma zayif eksende olur."""
+    if "inertia_mm4" in params:
+        a = _num(params, "area_mm2") * 1e-6 if "area_mm2" in params else None
+        i = _num(params, "inertia_mm4")
+        return i * 1e-12, a, f"I = {i:g} mm⁴"
+    sec = str(params.get("section", "rect")).lower()
+    if sec == "rect":
+        b, h = _num(params, "b_mm"), _num(params, "h_mm")
+        return min(b * h ** 3, h * b ** 3) / 12 * 1e-12, b * h * 1e-6, f"dikdörtgen {b:g}×{h:g} mm (zayıf eksen)"
+    if sec == "hollow_square":
+        b, t = _num(params, "b_mm"), _num(params, "t_mm")
+        if 2 * t >= b:
+            raise ValueError("Et kalınlığı t, kenarın yarısından küçük olmalı.")
+        return (b ** 4 - (b - 2 * t) ** 4) / 12 * 1e-12, (b * b - (b - 2 * t) ** 2) * 1e-6, f"kare kutu {b:g} mm, et {t:g} mm"
+    if sec == "circle":
+        d = _num(params, "d_mm")
+        return math.pi * d ** 4 / 64 * 1e-12, math.pi * d * d / 4 * 1e-6, f"dolu daire Ø{d:g} mm"
+    raise ValueError("section rect, hollow_square veya circle olmali (ya da inertia_mm4 [+ area_mm2] ver).")
+
+
+def column_buckling(params: dict) -> str:
+    """Euler burkulma yuku. params: length_m, end=pinned|fixed_free|fixed_pinned|fixed_fixed, E_gpa=210, yield_mpa=250,
+    load_n (opsiyonel, guvenlik katsayisi icin), section=rect|hollow_square|circle (ya da inertia_mm4 + area_mm2)"""
+    end = str(params.get("end", "pinned")).lower()
+    if end not in _BUCKLING_K:
+        raise ValueError(f"end şunlardan biri olmalı: {list(_BUCKLING_K)}")
+    length, e = _num(params, "length_m"), _num(params, "E_gpa", 210) * 1e9
+    i, a, desc = _min_section(params)
+    le = _BUCKLING_K[end] * length
+    pcr = math.pi ** 2 * e * i / le ** 2
+    rows = (f"| Kesit | {desc} | |\n| Etkin boy K·L | {le:.4g} (K={_BUCKLING_K[end]:g}) | m |\n"
+            f"| **Kritik burkulma yükü Pcr** | **{pcr / 1000:.5g}** | kN |\n")
+    note = ""
+    if a:
+        sig, lam = pcr / a, le / math.sqrt(i / a)
+        fy = _num(params, "yield_mpa", 250) * 1e6
+        rows += f"| Narinlik λ = K·L/r | {lam:.4g} | - |\n| Kritik gerilme σcr | {sig / 1e6:.4g} | MPa |\n"
+        if sig > fy:
+            note = f"\n\n**Uyarı:** σcr ({sig / 1e6:.4g} MPa) akma dayanımını ({fy / 1e6:g} MPa) aşıyor; Euler formülü geçersiz (kısa kolon), akma sınırlar."
+    if "load_n" in params:
+        rows += f"| **Güvenlik katsayısı** (Pcr/yük) | **{pcr / _num(params, 'load_n'):.3g}** | - |\n"
+    return ("**Kolon burkulması (Euler)**\n\n| Büyüklük | Değer | Birim |\n|---|---:|---|\n" + rows +
+            "\nPcr = π²·E·I/(K·L)²" + note)
+
+
+def orifice_flow(params: dict) -> str:
+    """Orifis/venturi debi (basitlestirilmis, sabit Cd). params: pipe_d_mm, orifice_d_mm, dp_kpa, density_kgm3=1000, cd=0.61"""
+    big, small = _num(params, "pipe_d_mm"), _num(params, "orifice_d_mm")
+    beta = small / big
+    if not 0.1 <= beta <= 0.75:
+        raise ValueError(f"β = d/D = {beta:.3f}; bu hesap 0.1–0.75 aralığında geçerli.")
+    dp, rho, cd = _num(params, "dp_kpa") * 1000, _num(params, "density_kgm3", 1000), _num(params, "cd", 0.61)
+    a0 = math.pi * (small / 1000) ** 2 / 4
+    q = cd * a0 * math.sqrt(2 * dp / rho) / math.sqrt(1 - beta ** 4)
+    return (f"**Orifis debisi**\n\n| Büyüklük | Değer | Birim |\n|---|---:|---|\n| β = d/D | {beta:.4g} | - |\n"
+            f"| Boşaltma katsayısı Cd | {cd:g} | - |\n| Basınç farkı ΔP | {dp / 1000:g} | kPa |\n"
+            f"| **Debi Q** | **{q * 1000:.5g}** | L/s ({q * 3600:.4g} m³/h) |\n| Kütlesel debi | {q * rho:.5g} | kg/s |\n\n"
+            f"Q = Cd·A₀·√(2ΔP/ρ)/√(1−β⁴). Sabit Cd yaklaşık bir değerdir; ticari ölçümde ISO 5167 (Reynolds'a bağlı Cd) kullan.")
+
+
+def bearing_life(params: dict) -> str:
+    """Rulman nominal omru L10. params: c_kn (dinamik yuk sayisi), p_kn (esdeger yuk), rpm, type=ball|roller"""
+    c, p, rpm = _num(params, "c_kn"), _num(params, "p_kn"), _num(params, "rpm")
+    kind = str(params.get("type", "ball")).lower()
+    if kind not in ("ball", "roller"):
+        raise ValueError("type ball (bilyalı) veya roller (makaralı) olmalı.")
+    exp = 3.0 if kind == "ball" else 10.0 / 3
+    l10 = (c / p) ** exp
+    return (f"**Rulman ömrü (L10)**\n\n| Büyüklük | Değer | Birim |\n|---|---:|---|\n| Tip / üs | {'bilyalı' if kind == 'ball' else 'makaralı'} / {exp:.4g} | - |\n"
+            f"| C / P | {c / p:.4g} | - |\n| **L10** | **{l10:.5g}** | milyon devir |\n| **L10h** | **{l10 * 1e6 / (60 * rpm):.5g}** | saat ({rpm:g} rpm) |\n\n"
+            f"L10 = (C/P)^p;  L10h = L10·10⁶/(60·n). %90 güvenilirlik, ideal yağlama ve hizalama varsayımıyla.")
+
+
+def psychrometrics(params: dict) -> str:
+    """Nemli hava ozellikleri (CoolProp HAPropsSI). params: t_c, rh_percent, pressure_bar=1.01325"""
+    from CoolProp.CoolProp import HAPropsSI
+    t, rh = _num(params, "t_c", positive=False) + 273.15, _num(params, "rh_percent")
+    if rh > 100:
+        raise ValueError("rh_percent 0–100 arasında olmalı.")
+    p = _num(params, "pressure_bar", 1.01325) * 1e5
+    w = HAPropsSI("W", "T", t, "R", rh / 100, "P", p)
+    return (f"**Nemli hava** ({t - 273.15:g} °C, %{rh:g} BN, {p / 1e5:.3f} bar)\n\n| Büyüklük | Değer | Birim |\n|---|---:|---|\n"
+            f"| Nem oranı W | {w * 1000:.4g} | g/kg kuru hava |\n| Çiğ noktası | {HAPropsSI('D', 'T', t, 'R', rh / 100, 'P', p) - 273.15:.3g} | °C |\n"
+            f"| Yaş termometre | {HAPropsSI('B', 'T', t, 'R', rh / 100, 'P', p) - 273.15:.3g} | °C |\n"
+            f"| Entalpi h | {HAPropsSI('H', 'T', t, 'R', rh / 100, 'P', p) / 1000:.4g} | kJ/kg kuru hava |\n"
+            f"| Özgül hacim | {HAPropsSI('V', 'T', t, 'R', rh / 100, 'P', p):.4g} | m³/kg kuru hava |")
+
+
+def npsh_available(params: dict) -> str:
+    """Pompa emisinde mevcut NPSH. params: temperature_c=20, surface_pressure_bar=1.01325 (mutlak), static_head_m (sivi seviyesi pompadan yukaridaysa +),
+    loss_m=0, fluid='Water', npsh_required_m (opsiyonel, emniyet payi icin)"""
+    from CoolProp.CoolProp import PropsSI
+    fluid, t = str(params.get("fluid", "Water")), _num(params, "temperature_c", 20, positive=False) + 273.15
+    ps = _num(params, "surface_pressure_bar", 1.01325) * 1e5
+    head = _num(params, "static_head_m", 0, positive=False)
+    loss = _num(params, "loss_m", 0, positive=False)
+    rho, pv = PropsSI("D", "T", t, "Q", 0, fluid), PropsSI("P", "T", t, "Q", 0, fluid)
+    npsh = (ps - pv) / (rho * G) + head - loss
+    rows = (f"| Akışkan | {fluid}, {t - 273.15:g} °C | |\n| Buhar basıncı Pv | {pv / 1000:.4g} | kPa |\n| Yoğunluk ρ | {rho:.1f} | kg/m³ |\n"
+            f"| **NPSH mevcut** | **{npsh:.4g}** | m |\n")
+    verdict = ""
+    if "npsh_required_m" in params:
+        req = _num(params, "npsh_required_m")
+        rows += f"| NPSH gerekli | {req:g} | m |\n| **Emniyet payı** | **{npsh - req:.3g}** | m |\n"
+        if npsh - req < 0.5:
+            verdict = "\n\n**Uyarı:** emniyet payı 0,5 m'nin altında; kavitasyon riski var."
+    return ("**NPSH (mevcut)**\n\n| Büyüklük | Değer | Birim |\n|---|---:|---|\n" + rows.rstrip("\n") +
+            "\n\nNPSHa = (P_yüzey − Pv)/(ρ·g) + z − h_kayıp" + verdict)
+
+
 CALCS = {"pipe_pressure_drop": pipe_pressure_drop, "beam_deflection": beam_deflection, "steam_table": steam_table,
-         "pump_power": pump_power, "shaft_torsion": shaft_torsion, "bolt_check": bolt_check, "wall_heat": wall_heat}
+         "pump_power": pump_power, "shaft_torsion": shaft_torsion, "bolt_check": bolt_check, "wall_heat": wall_heat,
+         "heat_exchanger": heat_exchanger, "column_buckling": column_buckling, "orifice_flow": orifice_flow,
+         "bearing_life": bearing_life, "psychrometrics": psychrometrics, "npsh_available": npsh_available}
 
 
 def run(calc: str, params: dict) -> str:

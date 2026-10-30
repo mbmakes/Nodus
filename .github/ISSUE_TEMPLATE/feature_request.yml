@@ -1,0 +1,15 @@
+name: Feature request / Özellik isteği
+description: An idea for Nodus / Nodus için bir fikir
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do? / Ne yapmaya çalışıyorsun?
+      description: The problem first, the solution second. / Önce sorun, sonra çözüm.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like to see? / Ne görmek isterdin?

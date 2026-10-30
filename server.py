@@ -384,8 +384,9 @@ async def ping(request):
 # ------------------------------------------------------------------
 # Ilk kurulum: arayuzden API anahtari ekleme (.env'e yazar, dogrular, yeniden baslatir)
 # ------------------------------------------------------------------
-KEY_ENV = {"gemini": "GEMINI_API_KEY", "groq": "GROQ_API_KEY", "openrouter": "OPENROUTER_API_KEY"}
-KEY_NAMES = {"gemini": "Gemini", "groq": "Groq", "openrouter": "OpenRouter"}
+KEY_ENV = {"gemini": "GEMINI_API_KEY", "groq": "GROQ_API_KEY", "openrouter": "OPENROUTER_API_KEY",
+           "cerebras": "CEREBRAS_API_KEY", "mistral": "MISTRAL_API_KEY"}
+KEY_NAMES = {"gemini": "Gemini", "groq": "Groq", "openrouter": "OpenRouter", "cerebras": "Cerebras", "mistral": "Mistral"}
 KEY_RE = re.compile(r"^[A-Za-z0-9_\-.]{16,256}$")
 ENV_PATH = os.path.join(BASE_DIR, ".env")
 
@@ -913,6 +914,13 @@ def main():
     if _nodus_running(port):   # zaten calisiyor: yalnizca pencereyi ac
         open_window(url)
         return
+    if not _port_free(port):   # baska bir program tutuyor: sessizce kapanmak yerine siradaki bos portu dene
+        free = next((p for p in range(port + 1, port + 21) if _port_free(p)), None)
+        if free is None:
+            print(f"[HATA] {port} portu dolu ve yakininda bos port yok. NODUS_PORT ile baska bir port sec.")
+            return
+        print(f"[UYARI] {port} portu baska bir program tarafindan kullaniliyor; {free} kullaniliyor.")
+        port, url = free, f"http://127.0.0.1:{free}"
     if not os.getenv("NODUS_NO_WINDOW"):
         threading.Thread(target=_open_when_ready, args=(url, port), daemon=True).start()
     print(f"Nodus hazır: {url}   (kapatmak için Ctrl+C)")

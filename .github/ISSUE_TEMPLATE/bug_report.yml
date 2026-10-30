@@ -1,0 +1,37 @@
+name: Bug report / Hata bildirimi
+description: Something does not work as expected / Beklediğin gibi çalışmayan bir şey
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. For security problems please use the private report in the Security tab instead (see SECURITY.md).
+        Zaman ayırdığın için teşekkürler. Güvenlik sorunları için Security sekmesindeki özel bildirimi kullan (bkz. SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Nodus version / Nodus sürümü
+      description: Settings → Version / Ayarlar → Sürüm
+      placeholder: "1.10-beta"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system / İşletim sistemi
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened? / Ne oldu?
+      description: What you did, what you expected and what you saw instead. / Ne yaptın, ne bekledin, ne gördün.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Terminal output or screenshot / Terminal çıktısı veya ekran görüntüsü
+      description: Remove API keys before pasting. / Yapıştırmadan önce API anahtarlarını sil.
+      render: text

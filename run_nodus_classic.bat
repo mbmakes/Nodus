@@ -10,7 +10,7 @@ echo.
 
 :: Bagimlilik kontrolu ve eksik kutuphanelerin kurulumu
 echo [1/2] Gerekli kutuphaneler denetleniyor...
-python -m pip install -r requirements.txt --quiet --disable-pip-version-check
+python -m pip install -r requirements.txt "streamlit>=1.50" --quiet --disable-pip-version-check
 if %errorlevel% neq 0 (
     echo [HATA] Kutuphaneler yuklenirken bir sorun olustu.
     pause

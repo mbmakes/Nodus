@@ -1,176 +1,195 @@
-<p align="center"><img src="docs/img/logo.png" width="120" alt="Nodus logosu"></p>
+<p align="center"><img src="docs/img/logo.png" width="120" alt="Nodus logo"></p>
 
-# Nodus
+<h1 align="center">Nodus</h1>
 
-**Mühendislik hesaplarını, dosya ve araştırma işlerini kendi başına yürüten, yerel çalışan otonom yapay zeka ajanı.**
-*An autonomous, locally-run AI agent for engineering calculations, file work and research.*
+<p align="center"><b>An autonomous AI agent for engineering calculations, file work and research.<br>It runs on your own machine and works with free API tiers.</b></p>
 
-> **Sürüm: v1.9-beta.** Günlük kullanıma yakın ama henüz geniş çapta denenmedi. Bilinen sınırlar için [Sınırlar](#sınırlar-ve-beta-notları) bölümüne bak.
+<p align="center"><b>English</b> · <a href="README.tr.md">Türkçe</a></p>
 
-![Hesap föyü: adım kaydı, denklem ve tablo](docs/img/hesap-foyu.png)
+<p align="center">
+  <a href="https://github.com/mbmakes/Nodus/actions/workflows/tests.yml"><img src="https://github.com/mbmakes/Nodus/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
+  <a href="https://github.com/mbmakes/Nodus/releases"><img src="https://img.shields.io/github/v/release/mbmakes/Nodus?include_prereleases&label=release" alt="latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/python-3.12%20%7C%203.13-3776AB.svg" alt="Python 3.12 | 3.13">
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Windows | macOS | Linux">
+</p>
 
-## Nodus ne yapar?
+> **Status: v1.10-beta.** Close to daily use, but not widely tested yet. See [Limits](#limits-and-beta-notes) for what to keep in mind.
+> The interface and the agent's default replies are in **Turkish** for now; an English interface is on the [roadmap](#roadmap). The agent understands English tasks.
 
-Bir görevi Türkçe yazarsın; Nodus planlar, doğru aracı seçer, hesabı yapar ve sonucu birimleriyle, denklem ve tablolarla sunar. Kod çalıştırma, dosya silme gibi riskli her adımda **önce senden onay ister**.
+![Calculation sheet: step log, equations and tables](docs/img/hesap-foyu.png)
 
-Örnek görevler:
+## What it does
 
-- *"Çapı 50 mm, uzunluğu 100 m olan pürüzsüz borudan 20 °C suyla 5 L/s akarken basınç kaybını hesapla."*
-- *"Boyu 2 m, 40×40 mm çelik kare profilli ankastre kirişin ucuna 500 N yük gelirse sehimi ve gerilmeyi bul."*
-- *"Doymuş su buharının 1–10 bar arasındaki entalpi ve entropi tablosunu ver."*
-- Bir Excel/PDF/Word/CSV yükle: *"Bu verideki trendi analiz et."*
-- Bir teknik çizim görseli yükle: *"Şekildeki kirişin maksimum sehimini hesapla."*
+You describe a task; Nodus plans it, picks the right tool, does the calculation and presents the result with units, equations and tables. Every risky step (running code, deleting files) **asks for your approval first**.
 
-## Öne çıkanlar
+Example tasks:
+
+- *"Water at 20 °C flows at 5 L/s through a smooth 50 mm pipe, 100 m long. What is the pressure drop?"*
+- *"A 2 m cantilever beam with a 40×40 mm square steel section carries 500 N at its tip. Find the deflection and stress."*
+- *"Give me the saturated steam table between 1 and 10 bar, with enthalpy and entropy."*
+- Upload an Excel/PDF/Word/CSV file: *"Analyse the trend in this data."*
+- Upload a technical drawing: *"Find the maximum deflection of the beam in the figure."*
+
+## Highlights
 
 | | |
 |---|---|
-| **Hazır, doğrulanmış hesaplar** | Boru basınç kaybı (Darcy-Weisbach + Colebrook-White), kiriş sehimi ve gerilmesi, doymuş buhar tablosu, pompa/fan gücü, mil burulması, cıvata kontrolü ve çok katmanlı duvardan ısı geçişi. Model formülü kafasından yazmaz; `eng_calc` aracı ile birim testli fonksiyonları çağırır. |
-| **Çoklu model yönlendirici** | Gemini, Groq ve OpenRouter arasında görev türüne göre seçim yapar; kota dolunca ya da sağlayıcı yanıt vermezse otomatik yedeğe geçer. |
-| **Çapraz doğrulama** | Ağır görevlerde cevap, farklı bir sağlayıcının modeline denetlettirilir. Model itiraz ederse hesap, itiraz notuyla bir kez yeniden yaptırılır. |
-| **Onay kapısı** | Kod çalıştırma, kabuk komutu, dosya silme, kalıcı hafıza yazımı onay ister. Onay ekranında *gerçekte çalışacak* kod (başvurulan dosyalar dahil) gösterilir. |
-| **Durdur düğmesi** | Çalışan görevi her an durdurur; çalışan kod/komut süreci de öldürülür. |
-| **Adım kaydı** | Her görevin araç adımları ve süreleri sohbetle birlikte kaydedilir. |
-| **Rapor** | Cevabı tek tıkla Word (.docx) veya PDF rapora dönüştürür (şekiller gömülü). |
-| **Dosya ve görsel girişi** | Sürükle-bırak, yapıştırma ya da düğme ile; PDF, Excel, Word, CSV, PNG/JPG. Sesli komut (Groq anahtarı varsa). |
-| **Yerel ve gizli** | Arayüz yalnızca `127.0.0.1`'de çalışır. Sohbetler ve notlar diskinde kalır. |
-| **Açık/koyu tema** | Mühendislik çizim kâğıdı (mavi kopya) esinli, tam ekran arayüz; telefon ve tablete uyumlu. |
+| **Verified calculations** | Pipe pressure drop (Darcy-Weisbach + Colebrook-White), beam deflection and stress, saturated steam tables, pump/fan power, shaft torsion, bolt check, multi-layer wall heat transfer, heat exchanger (LMTD), Euler column buckling, orifice flow, bearing life (L10), psychrometrics and NPSH. The model never writes formulas from memory: it calls the unit-tested functions of the `eng_calc` tool. Out-of-range inputs (for example "water" that is actually steam at the given state) are flagged instead of silently computed. |
+| **Multi-provider router** | Chooses between Gemini, Groq, OpenRouter, Cerebras and Mistral by task type, and falls back automatically when a quota runs out or a provider stops answering. |
+| **Cross-checking** | For heavy tasks the answer is reviewed by a model from a different provider. If it objects, the calculation is redone once with the objection attached. |
+| **Approval gate** | Code, shell commands, file deletion and persistent memory writes need your approval. The approval screen shows the code that will *actually* run, including referenced files. |
+| **Stop button** | Stops a running task at any moment and kills the code or command process it started. |
+| **Step log** | Every task's tool steps and timings are stored with the conversation. |
+| **Reports** | Turns an answer into a Word (.docx) or PDF report in one click, figures embedded. |
+| **File and image input** | Drag and drop, paste or button; PDF, Excel, Word, CSV, PNG/JPG. Voice input if you have a Groq key. |
+| **Local and private** | The interface listens on `127.0.0.1` only. Conversations and notes stay on your disk. |
+| **Light and dark theme** | A full-screen interface inspired by engineering blueprints; works on phones and tablets. |
 
-![Görev çalışırken: durdur düğmesi](docs/img/calisiyor-durdur.png)
+![While a task runs: the stop button](docs/img/calisiyor-durdur.png)
 
-## Kurulum
+## Installation
 
-### Tek satırla kurulum (önerilen)
+### One-line install (recommended)
 
-Hiçbir şey kurman gerekmez; Python'u da Nodus kendisi getirir.
+You do not need to install anything first; Nodus fetches Python itself if needed.
 
-**macOS / Linux** — Terminal'i aç, yapıştır, Enter:
+**macOS / Linux**: open a terminal, paste, press Enter:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mbmakes/Nodus/master/install.sh | bash
 ```
 
-macOS'ta kurulum sonunda `~/Applications/Nodus.app` oluşur: Launchpad'den veya Spotlight'tan (⌘Space → Nodus) açılır, Dock'a sürüklenebilir. Uygulama bu Mac'te üretildiği için Gatekeeper uyarısı çıkmaz. Zaten kuruluysa aynı komutu yeniden çalıştırmak simgeyi ekler.
+On macOS this also creates `~/Applications/Nodus.app`: open it from Launchpad or Spotlight (⌘Space → Nodus) and drag it to the Dock. The app is built on your own Mac, so Gatekeeper does not complain. Running the same command again on an existing install adds the icon.
 
-**Windows** — PowerShell'i aç, yapıştır, Enter:
+**Windows**: open PowerShell, paste, press Enter:
 
 ```powershell
 irm https://raw.githubusercontent.com/mbmakes/Nodus/master/install.ps1 | iex
 ```
 
-Bu komut son sürümü `~/Nodus` klasörüne (Windows: `%USERPROFILE%\Nodus`) indirir; **Python 3.12 yoksa klasörün içine, yönetici izni istemeden kurar** (taşınabilir, [uv](https://github.com/astral-sh/uv) ile; indirilen dosyanın SHA-256 özeti doğrulanır), kütüphaneleri kurar ve Nodus'u açar. İlk açılışta bir **anahtar penceresi** gelir: ücretsiz [Gemini anahtarını](https://aistudio.google.com/apikey) yapıştırırsın, doğrulanır ve kaydedilir; `.env` dosyasını elle düzenlemen gerekmez. Sonraki açılışlar için klasördeki `run_nodus.bat` (Windows) ya da `bash run_nodus.sh` (macOS/Linux) yeter. Önce betiği okumak istersen: [`install.sh`](install.sh), [`install.ps1`](install.ps1).
+The command downloads the latest release into `~/Nodus` (Windows: `%USERPROFILE%\Nodus`). **If Python 3.12 is missing, it installs a portable copy inside that folder, without admin rights** (via [uv](https://github.com/astral-sh/uv); the SHA-256 of the download is verified), installs the libraries and starts Nodus. On first launch a **key dialog** appears: paste a free [Gemini key](https://aistudio.google.com/apikey), it is validated and saved, so you never have to edit `.env` by hand. Next time, `run_nodus.bat` (Windows) or `bash run_nodus.sh` (macOS/Linux) in that folder is enough. If you prefer to read the scripts first: [`install.sh`](install.sh), [`install.ps1`](install.ps1).
 
-### Elle kurulum
+### Manual install
 
-Gereksinimler: **Python 3.12** (Windows'ta yoksa başlatıcı kendisi kurar) ve en az bir sağlayıcı anahtarı (ücretsiz katmanlar yeterli). Anahtarı `.env` dosyasına yazmak yerine ilk açılışta çıkan pencereye de yapıştırabilirsin.
+Requirements: **Python 3.12 or 3.13** (on Windows the launcher installs it for you) and at least one provider key (free tiers are enough). You can paste the key into the first-run dialog instead of writing it into `.env`.
 
 **Windows**
 
 ```bash
 git clone https://github.com/mbmakes/Nodus.git
 cd Nodus
-copy .env.example .env      # ardından .env içine anahtarlarını yaz
+copy .env.example .env      # then put your keys into .env
 run_nodus.bat
 ```
 
-**macOS** *(GitHub'ın macOS sunucusunda otomatik testlerle doğrulandı; arayüz penceresi gerçek bir Mac'te elle denenmedi, bkz. [Sınırlar](#sınırlar-ve-beta-notları))*
+**macOS / Linux** *(macOS is verified by automated tests on GitHub's macOS runner; the window, microphone and screen permissions have not been tried by hand on a real Mac, see [Limits](#limits-and-beta-notes))*
 
 ```bash
 git clone https://github.com/mbmakes/Nodus.git
 cd Nodus
-cp .env.example .env        # ardından .env içine anahtarlarını yaz
-bash run_nodus.sh           # Terminal'den (zip indirdiysen en güvenlisi bu)
+cp .env.example .env        # then put your keys into .env
+bash run_nodus.sh
 ```
 
-Python **3.12** gerekir (Mac'in kendi `python3`'ü genelde eski, Homebrew'unki çok yeni olabilir): `brew install python@3.12`. Başlatıcı `python3.12`'yi kendisi bulur; farklı bir Python kullanmak için `PYTHON=python3.12 bash run_nodus.sh`. İlk açılışta `.venv` oluşturulur ve kütüphaneler oraya kurulur (ilk seferde birkaç dakika sürebilir). Zip'ten çıkardıysan ve macOS "doğrulanamadı" derse `bash run_nodus.sh` kullan; `run_nodus.command`'a çift tıklamak için önce sağ tıklayıp "Aç" demen gerekebilir. Sesli komut için tarayıcı mikrofon izni, ekran görüntüsü aracı için macOS "Ekran Kaydı" izni gerekebilir.
+Python **3.12** is required (a Mac's own `python3` is usually too old and Homebrew's may be too new): `brew install python@3.12`. The launcher finds `python3.12` itself; to force another one use `PYTHON=python3.12 bash run_nodus.sh`. On first launch a `.venv` is created and the libraries are installed into it (a few minutes the first time). If macOS says the file cannot be verified after unzipping, use `bash run_nodus.sh`; to double-click `run_nodus.command` you may first need to right-click and choose "Open". Voice input needs the browser's microphone permission, and the screenshot tool may need macOS "Screen Recording" permission.
 
-Başlatıcılar eksik kütüphaneleri otomatik kurar, sunucuyu başlatır ve arayüzü Edge/Chrome'da uygulama penceresi olarak açar (`http://127.0.0.1:8765`); bulamazsa varsayılan tarayıcıyı kullanır.
+The launchers install missing libraries, start the server and open the interface as an app window in Edge/Chrome (`http://127.0.0.1:8765`), or in your default browser if neither is found. If the port is taken by another program, the next free one is used.
 
-Anahtarlar (`.env`) — en az biri gerekli:
+Keys (`.env`), at least one is required:
 
-| Değişken | Nereden |
+| Variable | Where to get it |
 |---|---|
 | `GEMINI_API_KEY` | Google AI Studio |
-| `GROQ_API_KEY` | console.groq.com (sesli komut için de gerekir) |
+| `GROQ_API_KEY` | console.groq.com (also needed for voice input) |
 | `OPENROUTER_API_KEY` | openrouter.ai |
+| `CEREBRAS_API_KEY` | cloud.cerebras.ai |
+| `MISTRAL_API_KEY` | console.mistral.ai |
 
-İsteğe bağlı ortam değişkenleri: `NODUS_PORT` (varsayılan 8765), `NODUS_NO_WINDOW=1` (pencere açma), `NODUS_WORKSPACE` (çalışma alanı klasörü), `NODUS_MEMORY_DIR` (bellek klasörü), `NODUS_SANDBOX=docker` (kodu Docker içinde çalıştır).
+Optional environment variables: `NODUS_PORT` (default 8765), `NODUS_NO_WINDOW=1` (do not open a window), `NODUS_WORKSPACE` (workspace folder), `NODUS_MEMORY_DIR` (memory folder), `NODUS_SANDBOX=docker` (run code inside Docker), `NODUS_OLLAMA=1` (also use a local Ollama server), `NODUS_NO_UPDATE_CHECK=1`.
 
-Komut satırı: `python main.py "görev metni"` · Eski Streamlit arayüzü: `run_nodus_classic.bat`.
+Command line: `python main.py "your task"` · Legacy Streamlit interface: `run_nodus_classic.bat` (installs Streamlit on first use).
 
-## Güncelleme
+## Updating
 
-Nodus açılınca (arka planda, en fazla yarım saatte bir) GitHub'daki en son sürüme bakar. Yeni sürüm varsa **sürüm numarası ve güncelleme notlarıyla** bir pencere açılır:
+When Nodus starts it checks GitHub for the latest release (in the background, at most every half hour). If there is a newer one, a dialog shows the **version number and release notes**:
 
-> *Nodus 1.1-beta yayınlandı. Şimdi güncellemek ister misin?* **[Şimdi güncelle]** **[Sonra]**
+> *Nodus 1.1-beta is out. Update now?* **[Update now]** **[Later]**
 
-"Şimdi güncelle" dersen tek tıkla indirilir, uygulanır ve Nodus kendini yeniden başlatır; sayfa otomatik yenilenir. Elle denetlemek için: **Ayarlar → Sürüm → Güncellemeleri denetle**.
+"Update now" downloads and applies it in one click, then Nodus restarts itself and the page refreshes. To check by hand: **Settings → Version → Check for updates**.
 
-- **Verilerin korunur:** `.env` (anahtarların), `memory/` (görevler, notlar, kurallar), `workspace/`, `custom_tools/` ve `core_vault/` dokunulmaz.
-- **Geri alma yedeği:** Değişen dosyaların eski halleri `.update_backup/` klasörüne kopyalanır; bir adım başarısız olursa her şey otomatik geri alınır.
-- **Git ile kurduysan** güncelleme `git` ile yapılır (yalnızca fast-forward; dosyalarda yerel değişiklik varsa dokunmaz ve seni uyarır). Zip olarak indirdiysen sürüm arşivi indirilip üstüne yazılır.
-- **Gizlilik ve güvenlik:** Denetim GitHub'a bir istek yapar (GitHub IP adresini görür, başka veri gönderilmez). Yalnızca `github.com/mbmakes/Nodus` sürümleri kabul edilir; arşiv yazılmadan önce doğrulanır (güvensiz yollar reddedilir). Arşivin dijital imzası yoktur; güven, GitHub'ın HTTPS bağlantısı ve bu depoya dayanır.
-- **Kapatmak için:** `.env` ya da ortam değişkeni olarak `NODUS_NO_UPDATE_CHECK=1`.
-- Çalışan bir görev varken güncelleme başlamaz.
+- **Your data is kept:** `.env` (your keys), `memory/` (tasks, notes, rules), `workspace/`, `custom_tools/` are never touched.
+- **Rollback copy:** the old versions of changed files go to `.update_backup/`; if a step fails, everything is restored automatically.
+- **If you installed with git,** the update uses `git` (fast-forward only; with local changes it does nothing and warns you). With a zip install the release archive is downloaded and unpacked over the folder.
+- **Privacy and safety:** the check sends one request to GitHub (GitHub sees your IP address, nothing else is sent). Only `github.com/mbmakes/Nodus` releases are accepted; the archive is validated before anything is written (unsafe paths are rejected). The archive has no digital signature; trust rests on GitHub's HTTPS and this repository.
+- **To turn it off:** set `NODUS_NO_UPDATE_CHECK=1` in `.env` or the environment.
+- No update starts while a task is running.
 
-> v1.0-beta bu özelliği içermez; ondan 1.1'e bir kez elle geçmen gerekir (`git pull` ya da yeni zip). Sonraki sürümler uygulamadan güncellenir.
+> v1.0-beta does not have this feature; moving from it to a newer version needs one manual step (`git pull` or a fresh zip). Later versions update from inside the app.
 
-## Nasıl çalışır?
+## How it works
 
 ```
-Tarayıcı (web/)  ──SSE──►  server.py (Starlette)
+Browser (web/)  ──SSE──►  server.py (Starlette)
                               │
-                       orchestrator.py   ReAct döngüsü, onay politikası, iptal
+                       orchestrator.py   ReAct loop, approval policy, cancel
                               │
               ┌───────────────┼────────────────┐
          agent_core.py    providers.py       tools.py
-         sistem istemi    model yönlendirici  araç kayıt defteri,
-         araç çağrıları   kota/sağlık         dosya erişim politikası, sandbox
+         system prompt    model router       tool registry,
+         tool calls       quota / health     file access policy, sandbox
                                                   │
-                                              engcalc.py  doğrulanmış hesaplar
+                                              engcalc.py  verified calculations
 ```
 
-- **ReAct döngüsü:** model bir araç çağırır, sonucu görür, devam eder; en fazla 12 adım. Aynı eylem 3 kez tekrarlanırsa döngü kesilir.
-- **Araçlar:** `eng_calc`, `open_app`, `save_user_file`, `execute_code`, `solve_math`, `web_search`, `fetch_url`, `browse_url`, `read_document`, `read_file`/`write_file`/`apply_patch`, `export_report`, `update_plan`, `remember`/`recall` ve dahası.
-- **Hafıza:** kalıcı kurallar ("SI birim sistemi kullan"), notlar (SQLite) ve sohbet geçmişi yerel `memory/` klasöründe.
+- **ReAct loop:** the model calls a tool, sees the result and continues, for at most 12 steps. If the same action repeats 3 times the loop is cut.
+- **Tools:** `eng_calc`, `open_app`, `save_user_file`, `execute_code`, `solve_math`, `web_search`, `fetch_url`, `browse_url`, `read_document`, `read_file`/`write_file`/`apply_patch`, `export_report`, `update_plan`, `remember`/`recall` and more.
+- **Memory:** persistent rules ("use SI units"), notes (SQLite) and conversation history live in the local `memory/` folder.
 
-![Başlangıç ekranı ve şablonlar](docs/img/baslangic.png)
+![Start screen and templates](docs/img/baslangic.png)
 
-## Güvenlik modeli
+## Security model
 
-- **Dosya erişimi:** Ajanın dosya araçları bilgisayarın her yerinde çalışır (göreli yol çalışma alanına göredir). **Kritik yerler onay ister**, "onaysız çalıştır" açıkken bile: sistem klasörleri, `.ssh`/`.aws` gibi ayar-anahtar klasörleri, `.env`/`.pem`/`id_rsa` gibi gizli dosyalar, var olan bir dosyanın üzerine yazma ve (internetten içerik okunduktan sonra) çalışma alanı dışı erişim. Dosya araçları Nodus'un kendi `.env` dosyasını **hiçbir zaman** okumaz ve Nodus klasörüne yazamaz. Ama onayladığın bir Python kodu ya da komut bunları yapabilir; bu yüzden kodu okumadan onaylama. Web arayüzünün dosya servisi ise hâlâ yalnızca çalışma alanına bakar.
-- **Onay politikası:** Varsayılan olarak kod/komut çalıştırma ve silme onay ister. "Kodu onaysız çalıştır" açılırsa (seçim hatırlanır) Python kodu ve kabuk komutları sormadan çalışır; dosya silme yine onay ister. İnternetten ya da belgeden içerik okunduktan sonra, "otomatik çalıştır" açık olsa bile onay istenir (prompt injection riskine karşı).
-- **Yerel sunucu:** Yalnızca `127.0.0.1`/`localhost` Host başlığı, değiştirici isteklerde özel başlık + aynı origin, sıkı CSP. SVG/HTML hiçbir zaman satır içi sunulmaz.
-- **Alt süreçler** API anahtarları olmadan, çalışma alanı içinde, zaman aşımıyla çalışır.
+- **File access:** the agent's file tools work anywhere on the computer (relative paths are relative to the workspace). **Critical places ask for approval**, even with "run without approval" switched on: system folders, config and key folders such as `.ssh`/`.aws`, secret files such as `.env`/`.pem`/`id_rsa`, overwriting an existing file, and (after web content has been read) any access outside the workspace. The file tools never read Nodus's own `.env` and cannot write into the Nodus folder. Code or a command you approve, however, can do both, so do not approve code without reading it. The web interface's file service still looks only inside the workspace.
+- **Approval policy:** by default, running code or commands and deleting files ask first. If you switch on "Run code without approval" (the choice is remembered), Python code and shell commands run without asking; deleting files still asks. After content from the internet or a document has been read, approval is required even then (protection against prompt injection).
+- **Local server:** only `127.0.0.1`/`localhost` Host headers, a custom header plus same-origin on state-changing requests, strict CSP. SVG/HTML is never served inline.
+- **Sub-processes** run without your API keys, inside the workspace, with a timeout.
 
-> ⚠️ **Docker sandbox kapalıyken** onaylanan kod senin makinende, kullanıcı hesabının yetkileriyle çalışır. Kodu okumadan onaylama. Güçlü izolasyon için Docker kur ve `.env`'e `NODUS_SANDBOX=docker` ekle (`sandbox/Dockerfile`).
+> ⚠️ **With the Docker sandbox off,** approved code runs on your machine with your user account's rights. Do not approve code without reading it. For strong isolation install Docker and add `NODUS_SANDBOX=docker` to `.env` (`sandbox/Dockerfile`).
 
-## Testler
+Found a vulnerability? Please follow [SECURITY.md](SECURITY.md).
+
+## Tests
 
 ```bash
-python -m pytest tests -q -p no:cacheprovider      # 97 test
+python -m pytest tests -q -p no:cacheprovider      # 104 tests
 ```
 
-Ajan/araç davranışı, güvenlik politikası, sunucu uçları (gerçek uvicorn + sahte model), durdurma ve süreç öldürme, rapor, arama ve hesap doğrulukları kapsanır.
+They cover agent and tool behaviour, the security policy, the server endpoints (a real uvicorn with a fake model), stopping and process killing, reports, search and calculation accuracy against hand calculations. GitHub Actions runs them on Windows, macOS and Linux on every push, together with the launcher and installer smoke tests.
 
-## Sınırlar ve beta notları
+## Limits and beta notes
 
-- **Windows**'ta elle ve otomatik olarak denendi. **macOS:** GitHub Actions'ta (macos-latest) tüm testler ve başlatıcının sunucuyu açma testi geçiyor; ancak arayüz penceresi, mikrofon ve ekran görüntüsü izinleri gerçek bir Mac'te elle denenmedi. Sorun yaşarsan Issues'a yaz.
-- Kod/komut çalıştırma, Docker kurulmadıkça işletim sistemi düzeyinde izole değildir.
-- Model hesapları hatalı olabilir; hazır hesaplar (`eng_calc`) ve çapraz doğrulama bunu azaltır ama ortadan kaldırmaz. Sonuçları kritik işlerde bağımsız doğrula.
-- Ücretsiz sağlayıcı katmanlarında kota dolabilir; Nodus yedeğe geçer ama yanıt süresi uzayabilir.
-- Sesli komut Groq'a ses gönderir.
-- Testler her push'ta GitHub Actions'ta (Windows, macOS, Linux) çalışır; kurulum betikleri de orada denenir.
+- Tried by hand and automatically on **Windows**. On **macOS** all tests and the launcher smoke test pass on GitHub Actions (`macos-latest`), but the window, microphone and screenshot permissions have not been tried on a real Mac. If you hit a problem, open an issue.
+- Code and command execution is not isolated at the operating-system level unless Docker is set up.
+- Model answers can be wrong. The ready calculations (`eng_calc`) and cross-checking reduce this but do not remove it. Verify results independently for anything critical.
+- Free provider tiers can run out of quota; Nodus falls back to another provider, but replies may get slower.
+- Voice input sends audio to Groq.
+- Gas-phase pipe results assume incompressible flow and are only valid for small pressure drops; Nodus warns when that is violated.
 
-## Yol haritası
+## Roadmap
 
-- Daha fazla doğrulanmış hesap (eşanjör, burkulma, yorulma, orifis/akış ölçümü)
-- Docker sandbox'ı varsayılan yapma
-- Cevap içi grafikler için etkileşimli önizleme
-- macOS desteğini gerçek donanımda doğrulama
+- English interface and replies by default
+- More verified calculations (fatigue, pressure vessels, pipe networks)
+- Docker sandbox on by default when Docker is available
+- Interactive previews for charts inside answers
+- Verifying macOS support on real hardware
 
-## Lisans
+## Contributing
+
+Bug reports, ideas and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
 
 [MIT](LICENSE) © 2026 mbmakes
 
-İstediğin gibi kullanabilir, değiştirebilir ve paylaşabilirsin. Tek ricam: işine yaradıysa bir teşekkür (ya da depoya ⭐) yeter. Lisans metnindeki telif satırını koruman yeterli.
+Use it, change it and share it as you like. One small request: if it helped you, a thank-you (or a ⭐ on the repo) is plenty. Keeping the copyright line from the license is enough.
