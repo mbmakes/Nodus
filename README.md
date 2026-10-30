@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Windows | macOS | Linux">
 </p>
 
-> **Status: v1.12-beta.** Close to daily use, but not widely tested yet. See [Limits](#limits-and-beta-notes) for what to keep in mind.
+> **Status: v1.13-beta.** Close to daily use, but not widely tested yet. See [Limits](#limits-and-beta-notes) for what to keep in mind.
 > The interface and the agent's default replies are in **Turkish** for now; an English interface is on the [roadmap](#roadmap). The agent understands English tasks.
 
 ![Calculation sheet: step log, equations and tables](docs/img/hesap-foyu.png)
@@ -41,6 +41,7 @@ Example tasks:
 | **Approval gate** | Code, shell commands, file deletion and persistent memory writes need your approval. The approval screen shows the code that will *actually* run, including referenced files. |
 | **Stop button** | Stops a running task at any moment and kills the code or command process it started. |
 | **Step log** | Every task's tool steps and timings are stored with the conversation. |
+| **Voice mode** | A separate tab (`/voice`, or the waveform button in the top bar) for talking to Nodus: it listens, does the work and answers out loud with a free neural Turkish voice, while an animated orb reacts to the sound. At the start you choose whether it asks before risky steps or works without asking. Even then, after it has read web content it still asks before deleting files, adding permanent code or writing outside the workspace. Works best in Chrome or Edge. |
 | **Reports** | Turns an answer into a Word (.docx) or PDF report in one click, figures embedded. |
 | **File and image input** | Drag and drop, paste or button; PDF, Excel, Word, CSV, PNG/JPG. Voice input if you have a Groq key. |
 | **Local and private** | The interface listens on `127.0.0.1` only. Conversations and notes stay on your disk. |
@@ -116,7 +117,7 @@ Keys (`.env`), at least one is required:
 | `CEREBRAS_API_KEY` | cloud.cerebras.ai |
 | `MISTRAL_API_KEY` | console.mistral.ai |
 
-Optional environment variables: `NODUS_PORT` (default 8765), `NODUS_NO_WINDOW=1` (do not open a window), `NODUS_WORKSPACE` (workspace folder), `NODUS_MEMORY_DIR` (memory folder), `NODUS_SANDBOX=docker` (run code inside Docker), `NODUS_OLLAMA=1` (also use a local Ollama server), `NODUS_NO_UPDATE_CHECK=1`.
+Optional environment variables: `NODUS_PORT` (default 8765), `NODUS_NO_WINDOW=1` (do not open a window), `NODUS_WORKSPACE` (workspace folder), `NODUS_MEMORY_DIR` (memory folder), `NODUS_SANDBOX=docker` (run code inside Docker), `NODUS_OLLAMA=1` (also use a local Ollama server), `NODUS_EDGE_TTS=0` (voice mode: do not use Microsoft's neural voice, use the device voice), `ELEVENLABS_API_KEY` (voice mode: optional ElevenLabs voice), `NODUS_NO_UPDATE_CHECK=1`.
 
 Command line: `python main.py "your task"` · Legacy Streamlit interface: `run_nodus_classic.bat` (installs Streamlit on first use).
 
@@ -172,7 +173,7 @@ Found a vulnerability? Please follow [SECURITY.md](SECURITY.md).
 ## Tests
 
 ```bash
-python -m pytest tests -q -p no:cacheprovider      # 108 tests
+python -m pytest tests -q -p no:cacheprovider      # 113 tests
 ```
 
 They cover agent and tool behaviour, the security policy, the server endpoints (a real uvicorn with a fake model), stopping and process killing, reports, search and calculation accuracy against hand calculations. GitHub Actions runs them on Windows, macOS and Linux on every push, together with the launcher and installer smoke tests.
@@ -184,6 +185,7 @@ They cover agent and tool behaviour, the security policy, the server endpoints (
 - Model answers can be wrong. The ready calculations (`eng_calc`) and cross-checking reduce this but do not remove it. Verify results independently for anything critical.
 - Free provider tiers can run out of quota; Nodus falls back to another provider, but replies may get slower.
 - Voice input sends audio to Groq.
+- Voice mode: listening uses your browser's own speech recognition (Chrome sends the audio to Google, Edge to Microsoft). The default voice comes from Microsoft's free neural service through the unofficial `edge-tts` package, so the text Nodus says is sent there and the service may change without notice; if it fails, Nodus falls back to the device voice. Not tried on a real Mac or with a real ElevenLabs account.
 - Gas-phase pipe results assume incompressible flow and are only valid for small pressure drops; Nodus warns when that is violated.
 
 ## Roadmap

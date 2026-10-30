@@ -90,9 +90,33 @@ def test_chat_streams_and_persists(srv, monkeypatch):
 @pytest.mark.skipif(not shutil.which("node"), reason="Node.js yok")
 def test_frontend_scripts_have_valid_syntax():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    for name in ("app.js", "theme.js", "dock-init.js", "voice.js"):   # sozdizimi hatasi bos ekran demek; eskiden hicbir test bunu gormuyordu
+    for name in ("app.js", "theme.js", "dock-init.js", "voice.js", "voice-intent.js"):   # sozdizimi hatasi bos ekran demek; eskiden hicbir test bunu gormuyordu
         r = subprocess.run(["node", "--check", os.path.join(root, "web", name)], capture_output=True, text=True)
         assert r.returncode == 0, f"{name}: {r.stderr[:400]}"
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="Node.js yok")
+def test_voice_approval_is_strict_refusal_wins_and_echo_is_ignored():
+    # Eski kural onay icin ^(evet|tamam|yap|...) onekine bakiyordu: "yapma" bile onay sayilip dosya yazdirmisti
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "voice-intent.js")
+    script = f"""
+const I = require({json.dumps(path)});
+console.log(JSON.stringify({{
+  yes: ['Evet', 'evet yap.', 'Onayla', 'tamam yap', 'Devam et', 'olur'].map(I.approval),
+  no: ['hayır', 'yapma', 'Yapma!', 'evet ama yapma', 'vazgeç', 'iptal et', 'dur'].map(I.approval),
+  unclear: ['tamam', 'yapıyorum', 'merhaba', 'sonic çok', 'tamam bence şimdi yapalım mı', ''].map(I.approval),
+  mode: [I.mode('onay iste'), I.mode('Onaysız çalış.'), I.mode('bu dosyayı onaysız çalıştır'), I.mode('merhaba')],
+  echo: [I.isEcho('yapayım mı', 'Onayına ihtiyacım var. Yapayım mı?'), I.isEcho('evet', 'evet bu cümle'), I.isEcho('başka bir şey söyledim', 'Onayına ihtiyacım var.')],
+}}));
+"""
+    r = subprocess.run(["node", "-e", script], capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode == 0, r.stderr[:300]
+    d = json.loads(r.stdout)
+    assert d["yes"] == [True] * 6
+    assert d["no"] == [False] * 7                  # olumsuz kelime her zaman ret
+    assert d["unclear"] == [None] * 6              # belirsiz soz onay sayilmaz
+    assert d["mode"] == ["ask", "auto", None, None]
+    assert d["echo"] == [True, False, False]
 
 
 def test_voice_page_hint_spoken_text_and_full_auto(srv, monkeypatch):

@@ -27,7 +27,7 @@ const TOOL_LABEL = { eng_calc: 'Mühendislik hesabı', execute_code: 'Kod çalı
 const S = {
   sid: null, mode: null, state: 'idle', muted: false, busy: false, speaking: false, pending: null, heard: '',
   recog: null, level: 0, target: 0, hue: 192, pulse: 0, analyser: null, freq: null, micOk: false, voice: null, steps: [], srFailed: false,
-  rate: 0.16, spin: 0, engine: '', ttsDown: false, ttsFails: 0, edgeVoices: ['tr-TR-EmelNeural', 'tr-TR-AhmetNeural'], ctx: null, outAnalyser: null, outFreq: null, audio: null, stopAudio: null, playing: false,
+  spokeAt: 0, lastSpoken: '', rate: 0.16, spin: 0, engine: '', ttsDown: false, ttsFails: 0, edgeVoices: ['tr-TR-EmelNeural', 'tr-TR-AhmetNeural'], ctx: null, outAnalyser: null, outFreq: null, audio: null, stopAudio: null, playing: false,
 };
 
 // ------------------------------------------------------------------ ag
@@ -100,7 +100,7 @@ function paintChips() {
 // ------------------------------------------------------------------ seslendirme
 function speechClean(t) {
   return String(t || '').replace(/```[\s\S]*?```/g, ' ').replace(/^\s*\|.*\|\s*$/gm, ' ').replace(/\$\$[\s\S]*?\$\$/g, ' ').replace(/\$([^$\n]+)\$/g, '$1')
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/https?:\/\/\S+/g, ' bağlantı ').replace(/[*_`#>~]/g, '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/https?:\/\/\S+/g, ' bağlantı ').replace(/_/g, ' ').replace(/[*`#>~]/g, '')
     .replace(/^\s*[-•]\s+/gm, '').replace(/\s+/g, ' ').trim();
 }
 function splitSentences(t, max = 600) {
@@ -145,9 +145,9 @@ if (synth) { pickVoice(); synth.onvoiceschanged = pickVoice; }
 
 function speak(text, after) {
   const clean = speechClean(text);
-  S.speaking = true; stopListening(); setState('speaking');
+  S.speaking = true; S.lastSpoken = clean; stopListening(); setState('speaking');
   setCaption('bot', clean.length > 260 ? clean.slice(0, 260) + '…' : clean);
-  const done = () => { S.speaking = false; if (after) after(); else { setState('idle'); startListening(); } };
+  const done = () => { S.speaking = false; S.spokeAt = Date.now(); if (after) after(); else { setState('idle'); startListening(); } };
   if (!clean) return setTimeout(done, 400);
   const parts = splitSentences(clean);
   if (serverVoice()) return speakServer(parts, (rest) => speakBrowser(rest, done), done);
@@ -247,7 +247,7 @@ function startListening() {
   r.onend = () => {
     S.recog = null;
     const text = S.heard; S.heard = '';
-    if (text) handleUtterance(text);
+    if (text) handleUtterance(text, true);
     else if (!S.muted && !S.busy && !S.speaking && !S.srFailed) setTimeout(startListening, 350);
     else if (!S.busy && !S.speaking && !S.pending) setState('idle');
   };
@@ -271,14 +271,20 @@ function setMode(m, announce) {
   if (announce) speak(m === 'auto' ? 'Tamam, bundan sonra onay sormadan çalışacağım.' : 'Tamam, kritik işlemlerden önce sana soracağım.');
 }
 
-function handleUtterance(raw) {
-  const text = raw.trim(), low = text.toLocaleLowerCase('tr');
+// fromVoice: konuşma tanımadan geldi (yazılan metin değil). Karar mantığı voice-intent.js'te (saf ve testli).
+function handleUtterance(raw, fromVoice) {
+  const text = raw.trim(), I = window.nodusIntent;
+  // Yankı koruması: Nodus'un sesinin hemen ardından gelen ya da az önce söylediğimiz cümleyi geri okuyan tanımalar kullanıcı sözü sayılmaz
+  if (fromVoice && (Date.now() - S.spokeAt < 1500 || I.isEcho(text, S.lastSpoken))) {
+    setCaption('you', ''); return setTimeout(startListening, 300);
+  }
   setCaption('you', text);
-  if (/onay\s*(iste|sor)|bana\s*sor/.test(low) && !/sorma/.test(low)) return setMode('ask', true);
-  if (/onaysız|onay\s*sorma|sormadan|her şeyi yap/.test(low) && text.length < 40) return setMode('auto', true);
+  const m = I.mode(text);
+  if (m) return setMode(m, true);
   if (S.pending) {
-    if (/^(evet|onayla|onaylıyorum|tamam|yap|devam|olur)/.test(low)) return decide(true);
-    if (/(hayır|hayir|reddet|vazgeç|yapma|iptal|olmaz)/.test(low)) return decide(false);
+    const a = I.approval(text);   // yalnızca kısa ve net ifadeler onay sayılır; "yapma" gibi olumsuz kelime her zaman ret
+    if (a === true) return decide(true);
+    if (a === false) return decide(false);
     return speak('Anlayamadım. Yapayım mı? Evet ya da hayır de.', () => { setState('approval'); startListening(); });
   }
   send(text);
@@ -391,7 +397,7 @@ function bind() {
     e.preventDefault();
     const i = $('#text-in'), t = i.value.trim();
     if (!t || !S.sid) return;
-    i.value = ''; interruptSpeech(); stopListening(); handleUtterance(t);
+    i.value = ''; interruptSpeech(); stopListening(); handleUtterance(t, false);
   });
   $('#btn-mic').addEventListener('click', () => {
     S.muted = !S.muted; paintChips();

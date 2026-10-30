@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Windows | macOS | Linux">
 </p>
 
-> **Sürüm: v1.12-beta.** Günlük kullanıma yakın ama henüz geniş çapta denenmedi. Bilinen sınırlar için [Sınırlar](#sınırlar-ve-beta-notları) bölümüne bak.
+> **Sürüm: v1.13-beta.** Günlük kullanıma yakın ama henüz geniş çapta denenmedi. Bilinen sınırlar için [Sınırlar](#sınırlar-ve-beta-notları) bölümüne bak.
 
 ![Hesap föyü: adım kaydı, denklem ve tablo](docs/img/hesap-foyu.png)
 
@@ -40,6 +40,7 @@ Bir görevi Türkçe yazarsın; Nodus planlar, doğru aracı seçer, hesabı yap
 | **Onay kapısı** | Kod çalıştırma, kabuk komutu, dosya silme, kalıcı hafıza yazımı onay ister. Onay ekranında *gerçekte çalışacak* kod (başvurulan dosyalar dahil) gösterilir. |
 | **Durdur düğmesi** | Çalışan görevi her an durdurur; çalışan kod/komut süreci de öldürülür. |
 | **Adım kaydı** | Her görevin araç adımları ve süreleri sohbetle birlikte kaydedilir. |
+| **Sesli mod** | Nodus'la konuşmak için ayrı bir sekme (`/voice`, ya da üst çubuktaki ses dalgası düğmesi): seni dinler, işi yapar ve cevabı ücretsiz sinir ağı Türkçe sesiyle okur; ortadaki küre sese göre hareket eder. Başlangıçta riskli adımlardan önce sorup sormayacağını seçersin. Onaysız modda bile web'den içerik okuduktan sonra dosya silme, kalıcı kod ekleme ve çalışma alanı dışına yazma işlerinden önce yine sorar. En iyi Chrome ya da Edge'de çalışır. |
 | **Rapor** | Cevabı tek tıkla Word (.docx) veya PDF rapora dönüştürür (şekiller gömülü). |
 | **Dosya ve görsel girişi** | Sürükle-bırak, yapıştırma ya da düğme ile; PDF, Excel, Word, CSV, PNG/JPG. Sesli komut (Groq anahtarı varsa). |
 | **Yerel ve gizli** | Arayüz yalnızca `127.0.0.1`'de çalışır. Sohbetler ve notlar diskinde kalır. |
@@ -115,7 +116,7 @@ Anahtarlar (`.env`) — en az biri gerekli:
 | `CEREBRAS_API_KEY` | cloud.cerebras.ai |
 | `MISTRAL_API_KEY` | console.mistral.ai |
 
-İsteğe bağlı ortam değişkenleri: `NODUS_PORT` (varsayılan 8765), `NODUS_NO_WINDOW=1` (pencere açma), `NODUS_WORKSPACE` (çalışma alanı klasörü), `NODUS_MEMORY_DIR` (bellek klasörü), `NODUS_SANDBOX=docker` (kodu Docker içinde çalıştır), `NODUS_OLLAMA=1` (yerel Ollama'yı da kullan), `NODUS_NO_UPDATE_CHECK=1`.
+İsteğe bağlı ortam değişkenleri: `NODUS_PORT` (varsayılan 8765), `NODUS_NO_WINDOW=1` (pencere açma), `NODUS_WORKSPACE` (çalışma alanı klasörü), `NODUS_MEMORY_DIR` (bellek klasörü), `NODUS_SANDBOX=docker` (kodu Docker içinde çalıştır), `NODUS_OLLAMA=1` (yerel Ollama'yı da kullan), `NODUS_EDGE_TTS=0` (sesli mod: Microsoft sinir ağı sesini kullanma, cihazın sesini kullan), `ELEVENLABS_API_KEY` (sesli mod: isteğe bağlı ElevenLabs sesi), `NODUS_NO_UPDATE_CHECK=1`.
 
 Komut satırı: `python main.py "görev metni"` · Eski Streamlit arayüzü: `run_nodus_classic.bat`.
 
@@ -169,7 +170,7 @@ Tarayıcı (web/)  ──SSE──►  server.py (Starlette)
 ## Testler
 
 ```bash
-python -m pytest tests -q -p no:cacheprovider      # 108 test
+python -m pytest tests -q -p no:cacheprovider      # 113 test
 ```
 
 Ajan/araç davranışı, güvenlik politikası, sunucu uçları (gerçek uvicorn + sahte model), durdurma ve süreç öldürme, rapor, arama ve hesap doğrulukları kapsanır.
@@ -181,6 +182,7 @@ Ajan/araç davranışı, güvenlik politikası, sunucu uçları (gerçek uvicorn
 - Model hesapları hatalı olabilir; hazır hesaplar (`eng_calc`) ve çapraz doğrulama bunu azaltır ama ortadan kaldırmaz. Sonuçları kritik işlerde bağımsız doğrula.
 - Ücretsiz sağlayıcı katmanlarında kota dolabilir; Nodus yedeğe geçer ama yanıt süresi uzayabilir.
 - Sesli komut Groq'a ses gönderir.
+- Sesli mod: dinleme tarayıcının kendi konuşma tanımasıyla yapılır (Chrome sesi Google'a, Edge Microsoft'a gönderir). Varsayılan ses, resmî olmayan `edge-tts` paketi üzerinden Microsoft'un ücretsiz sinir ağı servisinden gelir; yani Nodus'un söylediği metin oraya gider ve servis haber verilmeden değişebilir. Bozulursa Nodus cihazın sesine döner. Gerçek bir Mac'te ve gerçek bir ElevenLabs hesabıyla denenmedi.
 - Testler her push'ta GitHub Actions'ta (Windows, macOS, Linux) çalışır; kurulum betikleri de orada denenir.
 
 ## Yol haritası

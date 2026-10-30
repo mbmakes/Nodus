@@ -35,7 +35,7 @@ load_dotenv(override=True)
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
-from starlette.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
+from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
