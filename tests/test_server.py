@@ -81,6 +81,18 @@ def test_chat_streams_and_persists(srv, monkeypatch):
     assert any(s["id"] == sid for s in requests.get(base + "/api/bootstrap", headers=H).json()["sessions"])
 
 
+def test_busy_flag_is_set_before_the_job_thread_starts(srv, monkeypatch):
+    server, base = srv
+    from starlette.responses import JSONResponse
+    sid, seen = new_sid(base), []
+    monkeypatch.setattr(server, "sse", lambda job: (seen.append(server.STATE[sid].busy), JSONResponse({"ok": True}))[1])
+    assert chat(base, sid, "selam").status_code == 200
+    assert seen == [True]                                                # is parcacigi baslamadan once bayrak kalkmis olmali
+    assert chat(base, sid, "ikinci").status_code == 409                  # ayni sohbette ikinci gorev araya giremez
+    server.STATE[sid].busy = False
+    assert chat(base, sid, "").status_code == 400 and not server.STATE[sid].busy   # reddedilen istek bayragi birakmaz
+
+
 def test_risky_action_waits_for_approval_and_can_be_rejected(srv, monkeypatch):
     server, base = srv
     action = 'Siliyorum.\nEYLEM_DETAYI:\n{"action": "delete_file", "params": {"filename": "yok_boyle_dosya.tmp"}}'
@@ -476,7 +488,6 @@ def test_vision_order_prefers_fast_flash_models():
 
 def test_chat_steps_record_timings_in_ui(monkeypatch):
     """Sureler Terminal'e degil adim kaydina yazilir (kullanici Terminal'i gormuyor)."""
-    import io
     import server
     events = []
     st = server.Status(lambda kind, **kw: events.append((kind, kw)))

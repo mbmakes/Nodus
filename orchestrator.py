@@ -3,7 +3,7 @@ import os
 import re
 import json
 import time
-from tools import NodusTools
+from tools import NodusTools, IGNORED_DIRS
 from agent_core import extract_action
 
 tools = NodusTools()
@@ -126,11 +126,13 @@ def is_safe_action(action_info: dict, auto_exec: bool = False, tainted: bool = F
 
     if action in FILE_TOOLS:
         params = action_info.get("params") or {}
-        target = next((params[k] for k in FILE_PATH_KEYS if params.get(k)), None)
-        if target:   # yol yoksa arac workspace'in kokunu kullanir
-            level, why = tools.path_risk(str(target), write=action in FILE_WRITE, tainted=tainted)
-            if level == "ask":   # kritik yer: "onaysiz calistir" acik olsa bile sorulur. 'deny' aracin kendi hatasina birakilir
-                return False, why
+        # Hepsine bakilir: agent_core esanlamli adlardan (filename/path, directory/dir ...) hangisini kullanacagini kendi secer,
+        # yalniz ilkine bakmak {"filename": "x", "directory": "C:\\Windows"} gibi karisik bir cagriyi onaysiz gecirirdi.
+        for k in FILE_PATH_KEYS:
+            if params.get(k):   # hic yol yoksa arac workspace'in kokunu kullanir
+                level, why = tools.path_risk(str(params[k]), write=action in FILE_WRITE, tainted=tainted)
+                if level == "ask":   # kritik yer: "onaysiz calistir" acik olsa bile sorulur. 'deny' aracin kendi hatasina birakilir
+                    return False, why
         return True, ""
 
     if action in READ_ONLY or action in WORKSPACE_WRITE:
@@ -186,7 +188,7 @@ def execute_with_healing(agent, action_info: dict, active_model: str, fetched_mo
         heal_resp = agent.call_model(active_model, heal_prompt, [], fetched_models)
         heal_action = agent.parse_action(heal_resp)
 
-        if heal_action and heal_action.get("action") == "execute_code":
+        if heal_action and heal_action.get("action") in ("execute_code", "execute_python_code"):
             allowed, why = is_safe_action(heal_action, auto_exec, tainted)
             if not allowed:  # onarim kodu onaylanmadigi icin calistirilmaz
                 repair_logs.append(f"**Uyarı:** Onarım kodu onay gerektirdiği için çalıştırılmadı ({why})")
@@ -201,6 +203,7 @@ def execute_with_healing(agent, action_info: dict, active_model: str, fetched_mo
     generated_images = []
     if os.path.exists(workspace_dir):
         for dp, dn, fn in os.walk(workspace_dir):
+            dn[:] = [d for d in dn if d not in IGNORED_DIRS]   # NODUS_WORKSPACE buyuk bir klasore isaret ederse her adimda .git/node_modules gezilmesin
             for fname in fn:
                 if fname.lower().endswith((".png", ".jpg", ".jpeg")):
                     full_img_path = os.path.join(dp, fname)

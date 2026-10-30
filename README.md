@@ -138,7 +138,7 @@ Tarayıcı (web/)  ──SSE──►  server.py (Starlette)
 
 ## Güvenlik modeli
 
-- **Dosya erişimi:** Ajanın dosya araçları bilgisayarın her yerinde çalışır (göreli yol çalışma alanına göredir). **Kritik yerler onay ister**, "onaysız çalıştır" açıkken bile: sistem klasörleri, `.ssh`/`.aws` gibi ayar-anahtar klasörleri, `.env`/`.pem`/`id_rsa` gibi gizli dosyalar, var olan bir dosyanın üzerine yazma ve (internetten içerik okunduktan sonra) çalışma alanı dışı erişim. Nodus'un kendi `.env` dosyası ajana **hiçbir zaman** açılmaz ve Nodus klasörüne dosya araçlarıyla yazılamaz. Web arayüzünün dosya servisi ise hâlâ yalnızca çalışma alanına bakar.
+- **Dosya erişimi:** Ajanın dosya araçları bilgisayarın her yerinde çalışır (göreli yol çalışma alanına göredir). **Kritik yerler onay ister**, "onaysız çalıştır" açıkken bile: sistem klasörleri, `.ssh`/`.aws` gibi ayar-anahtar klasörleri, `.env`/`.pem`/`id_rsa` gibi gizli dosyalar, var olan bir dosyanın üzerine yazma ve (internetten içerik okunduktan sonra) çalışma alanı dışı erişim. Dosya araçları Nodus'un kendi `.env` dosyasını **hiçbir zaman** okumaz ve Nodus klasörüne yazamaz. Ama onayladığın bir Python kodu ya da komut bunları yapabilir; bu yüzden kodu okumadan onaylama. Web arayüzünün dosya servisi ise hâlâ yalnızca çalışma alanına bakar.
 - **Onay politikası:** Varsayılan olarak kod/komut çalıştırma ve silme onay ister. "Kodu onaysız çalıştır" açılırsa (seçim hatırlanır) Python kodu ve kabuk komutları sormadan çalışır; dosya silme yine onay ister. İnternetten ya da belgeden içerik okunduktan sonra, "otomatik çalıştır" açık olsa bile onay istenir (prompt injection riskine karşı).
 - **Yerel sunucu:** Yalnızca `127.0.0.1`/`localhost` Host başlığı, değiştirici isteklerde özel başlık + aynı origin, sıkı CSP. SVG/HTML hiçbir zaman satır içi sunulmaz.
 - **Alt süreçler** API anahtarları olmadan, çalışma alanı içinde, zaman aşımıyla çalışır.
@@ -148,7 +148,7 @@ Tarayıcı (web/)  ──SSE──►  server.py (Starlette)
 ## Testler
 
 ```bash
-python -m pytest tests -q -p no:cacheprovider      # 68 test
+python -m pytest tests -q -p no:cacheprovider      # 97 test
 ```
 
 Ajan/araç davranışı, güvenlik politikası, sunucu uçları (gerçek uvicorn + sahte model), durdurma ve süreç öldürme, rapor, arama ve hesap doğrulukları kapsanır.
@@ -160,15 +160,14 @@ Ajan/araç davranışı, güvenlik politikası, sunucu uçları (gerçek uvicorn
 - Model hesapları hatalı olabilir; hazır hesaplar (`eng_calc`) ve çapraz doğrulama bunu azaltır ama ortadan kaldırmaz. Sonuçları kritik işlerde bağımsız doğrula.
 - Ücretsiz sağlayıcı katmanlarında kota dolabilir; Nodus yedeğe geçer ama yanıt süresi uzayabilir.
 - Sesli komut Groq'a ses gönderir.
-- Henüz CI yok; testler elle çalıştırılır.
+- Testler her push'ta GitHub Actions'ta (Windows, macOS, Linux) çalışır; kurulum betikleri de orada denenir.
 
 ## Yol haritası
 
-- Daha fazla doğrulanmış hesap (ısı transferi, pompa/fan seçimi, mil ve cıvata hesapları)
-- Docker sandbox'ı varsayılan yapma ve kurulum sihirbazı
+- Daha fazla doğrulanmış hesap (eşanjör, burkulma, yorulma, orifis/akış ölçümü)
+- Docker sandbox'ı varsayılan yapma
 - Cevap içi grafikler için etkileşimli önizleme
-- macOS desteğini gerçek donanımda doğrulama, Linux başlatıcısı
-- CI (GitHub Actions: Windows, macOS, Linux)
+- macOS desteğini gerçek donanımda doğrulama
 
 ## Lisans
 

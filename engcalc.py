@@ -13,7 +13,7 @@ def _num(params: dict, key: str, default=None, positive=True) -> float:
     try:
         v = float(v)
     except (TypeError, ValueError):
-        raise ValueError(f"'{key}' sayi olmali (gelen: {v!r}).")
+        raise ValueError(f"'{key}' sayi olmali (gelen: {v!r}).") from None
     if not math.isfinite(v) or (positive and v <= 0):
         raise ValueError(f"'{key}' pozitif ve sonlu olmali (gelen: {v}).")
     return v
@@ -24,6 +24,12 @@ def _fluid_props(fluid: str, t_c: float, p_pa: float):
     from CoolProp.CoolProp import PropsSI
     T = t_c + 273.15
     return PropsSI("D", "T", T, "P", p_pa, fluid), PropsSI("V", "T", T, "P", p_pa, fluid)
+
+
+def _phase(fluid: str, t_c: float, p_pa: float) -> str:
+    """CoolProp faz adi: liquid | gas | supercritical* | twophase."""
+    from CoolProp.CoolProp import PhaseSI
+    return PhaseSI("T", t_c + 273.15, "P", p_pa, fluid)
 
 
 def _friction(re: float, rel_rough: float) -> float:
@@ -57,6 +63,9 @@ def pipe_pressure_drop(params: dict) -> str:
     t_c = _num(params, "temperature_c", 20, positive=False)
     p_pa = _num(params, "pressure_bar", 1.01325) * 1e5
     rho, mu = _fluid_props(fluid, t_c, p_pa)
+    phase = _phase(fluid, t_c, p_pa)
+    if phase == "twophase":
+        raise ValueError(f"{fluid} bu koşulda ({t_c:g} °C, {p_pa / 1e5:.3f} bar) iki fazlı; tek fazlı boru formülü geçersiz. Sıcaklığı ya da basıncı değiştir.")
     re = rho * v * d / mu
     f = _friction(re, eps / d)
     dp = f * (L / d) * rho * v * v / 2
@@ -70,7 +79,16 @@ def pipe_pressure_drop(params: dict) -> str:
             f"| Debi Q | {q * 1000:.4g} | L/s |\n| Ortalama hız V | {v:.4f} | m/s |\n"
             f"| Reynolds sayısı Re | {re:,.0f} ({regime}) | - |\n| Sürtünme katsayısı f | {f:.5f} | - |\n"
             f"| **Basınç kaybı ΔP** | **{dp / 1000:.3f}** | kPa |\n| Yük kaybı h | {h:.3f} | m |\n\n"
-            f"ΔP = f · (L/D) · ρV²/2")
+            f"ΔP = f · (L/D) · ρV²/2" + _gas_note(phase, dp, p_pa, fluid, t_c))
+
+
+def _gas_note(phase: str, dp: float, p_pa: float, fluid: str, t_c: float) -> str:
+    """Gaz fazinda Darcy-Weisbach sikistirilamaz kabul eder: faz uyarisi (ornek: 1 bar'da 120 °C 'su' aslinda buhardir) ve ΔP/P siniri."""
+    if "gas" not in phase:
+        return ""
+    note = (f"\n\n**Uyarı:** {fluid} bu koşulda ({t_c:g} °C, {p_pa / 1e5:.3f} bar) gaz fazında; sıvı bekliyorsan basıncı yükselt. "
+            "Gaz için bu formül sıkıştırılamaz akış varsayar (ΔP, mutlak basıncın ~%10'undan küçükse geçerlidir).")
+    return note + (f" Burada ΔP/P = %{dp / p_pa * 100:.0f}: sonuç GEÇERSİZ, sıkıştırılabilir akış hesabı gerekir." if dp > 0.1 * p_pa else "")
 
 
 _BEAMS = {
@@ -241,6 +259,8 @@ def wall_heat(params: dict) -> str:
     area = _num(params, "area_m2", 1)
     res = [("iç taşınım", 1 / h_in)]
     for k, ly in enumerate(layers, 1):
+        if not isinstance(ly, dict):
+            raise ValueError(f"layers[{k - 1}] bir nesne olmalı: {{\"thickness_mm\": 200, \"k_wm\": 0.8}} (gelen: {ly!r}).")
         res.append((f"katman {k} ({_num(ly, 'thickness_mm'):g} mm, k={_num(ly, 'k_wm'):g})", _num(ly, "thickness_mm") / 1000 / _num(ly, "k_wm")))
     res.append(("dış taşınım", 1 / h_out))
     r = sum(x for _, x in res)
@@ -250,7 +270,7 @@ def wall_heat(params: dict) -> str:
         t2 = t - q * x
         rows.append(f"| {label} | {x:.4f} | {t:.2f} → {t2:.2f} |")
         t = t2
-    return (f"**Duvardan ısı geçişi** (kararlı hal, 1-B)\n\n| Direnç | R (m²·K/W) | Sıcaklık (°C) |\n|---|---:|---|\n" + "\n".join(rows) +
+    return ("**Duvardan ısı geçişi** (kararlı hal, 1-B)\n\n| Direnç | R (m²·K/W) | Sıcaklık (°C) |\n|---|---:|---|\n" + "\n".join(rows) +
             f"\n\n| Büyüklük | Değer | Birim |\n|---|---:|---|\n| Toplam direnç | {r:.4f} | m²·K/W |\n"
             f"| **U değeri** | **{1 / r:.4g}** | W/m²·K |\n| **Isı akısı q** | **{q:.4g}** | W/m² |\n"
             f"| Isı kaybı (A={area:g} m²) | {q * area:.5g} | W |\n\nq = ΔT/ΣR;  R = L/k (iletim), 1/h (taşınım)")

@@ -2,7 +2,6 @@
 import os
 import re
 import json
-import time
 import base64
 import requests
 from tools import NodusTools, ERR
@@ -332,7 +331,6 @@ EYLEM_DETAYI:
         # Hem mesaj listesi hem tek metin alabilen esnek yapi
         if isinstance(prompt_content, list):
             messages = prompt_content
-            available_models = history
         else:
             messages = [{"role": "system", "content": self._build_system_prompt()}]
             if history:
@@ -488,7 +486,7 @@ EYLEM_DETAYI:
             return {"success": _ok(res), "filename": fname, "output": str(res)}
 
         if action == "search_codebase":
-            res = t.search_codebase(_p(params, "query", "pattern"))
+            res = t.search_codebase(_p(params, "query", "pattern"), _p(params, "target_dir", "directory", "dir", default="."))
             return {"success": _ok(res), "matches": res, "output": str(res)}
 
         if action == "self_improve":

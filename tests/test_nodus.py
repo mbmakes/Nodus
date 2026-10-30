@@ -695,3 +695,66 @@ def test_policy_gates_file_tools_by_path(monkeypatch):
     assert is_safe_action({"action": "write_file", "params": {"filename": "a.txt", "content": "x"}})[0]
     why = is_safe_action(ssh)[1]
     assert "id_rsa" in why
+
+
+def test_policy_checks_every_path_key_not_just_the_first():
+    # agent_core esanlamli adlardan (filename/directory/dir...) birini kendi secer; kritik yol hangisinde olursa olsun sorulmali
+    home_ssh = os.path.join(os.path.expanduser("~"), ".ssh")
+    for params in ({"filename": "a.txt", "directory": home_ssh}, {"path": "a.txt", "dir": home_ssh},
+                   {"filename": "a.txt", "target_dir": home_ssh}):
+        assert not is_safe_action({"action": "list_files", "params": params}, auto_exec=True)[0], params
+    assert is_safe_action({"action": "list_files", "params": {"filename": "a.txt", "directory": "."}})[0]
+
+
+def test_healing_also_works_for_execute_python_code_name():
+    ran = []
+
+    class FakeAgent:
+        def execute_approved_action(self, action):
+            ran.append(action["params"]["code"])
+            return {"success": False, "stderr": "boom", "output": "boom"}
+
+        def call_model(self, *a, **k):
+            return 'EYLEM_DETAYI:\n{"action": "execute_python_code", "params": {"code": "print(1)"}}'
+
+        def parse_action(self, text):
+            return extract_action(text)[0]
+
+    execute_with_healing(FakeAgent(), {"action": "execute_python_code", "params": {"code": "1/0"}}, "m", [], auto_exec=True)
+    assert len(ran) == 3, ran                                            # ilk deneme + 2 onarim (eskiden onarim hic denenmiyordu)
+
+
+def test_fetch_url_decodes_turkish_page_without_charset_header(monkeypatch):
+    import http.server
+    import socketserver
+    import threading
+
+    html = "<html><head><meta charset='utf-8'></head><body><p>Şişli çağrı, ığdır İstanbul</p></body></html>".encode("utf-8")
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")   # charset yok: requests ISO-8859-1 varsayardi
+            self.send_header("Content-Length", str(len(html)))
+            self.end_headers()
+            self.wfile.write(html)
+
+        def log_message(self, *a):
+            pass
+
+    srv = socketserver.TCPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        monkeypatch.setattr(tools, "_assert_public_url", lambda u: None)   # SSRF korumasi baska testte; burada yerel sunucu gerekli
+        assert "Şişli çağrı, ığdır İstanbul" in tools.fetch_url(f"http://127.0.0.1:{srv.server_address[1]}/")
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert tools._decode_body("çağrı".encode("cp1254"), None) == "çağrı"      # UTF-8 degilse cp1254'e duser
+    assert tools._decode_body("Merhaba ş".encode("utf-8")[:-1], None) == "Merhaba "   # 1 MB'ta kesilen harf cp1254 bozuntusuna dusmez
+
+
+def test_long_code_runs_from_a_temp_file_and_cleans_up():
+    code = "# " + "a" * (tools.MAX_ARG_CODE * 5) + "\nprint('uzun kod tamam')"   # Windows'ta '-c' ile WinError 206 verirdi
+    assert "uzun kod tamam" in tools.execute_python_code(code)
+    assert not [f for f in os.listdir(tools.WORKSPACE_DIR) if f.startswith(".nodus_")]

@@ -213,7 +213,6 @@ class NodusSessions:
         os.replace(path + ".tmp", path)
 
     def list(self) -> list:
-        import time
         out = []
         for name in os.listdir(self.dir):
             sid = name[:-5]

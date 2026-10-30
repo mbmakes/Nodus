@@ -23,6 +23,14 @@ def test_pipe_pressure_drop_matches_hand_calc():
     assert "laminer" in laminar and cell(laminar, "Sürtünme katsayısı f") == pytest.approx(64 / cell(laminar, "Reynolds sayısı Re"), rel=0.01)
 
 
+def test_pipe_warns_when_fluid_is_not_liquid():
+    water = engcalc.run("pipe_pressure_drop", {"diameter_mm": 50, "length_m": 100, "flow_lps": 5})
+    assert "Uyarı" not in water                                          # 20 C'de sivi: uyari yok
+    steam = engcalc.run("pipe_pressure_drop", {"diameter_mm": 50, "length_m": 100, "flow_lps": 5, "temperature_c": 120})
+    assert "gaz fazında" in steam                                        # 1 bar'da 120 C 'su' buhardir; eskiden sessizce hesaplaniyordu
+    assert "GEÇERSİZ" in engcalc.run("pipe_pressure_drop", {"diameter_mm": 10, "length_m": 500, "velocity_ms": 30, "fluid": "Air"})
+
+
 def test_beam_deflection_cases():
     md = engcalc.run("beam_deflection", {"length_m": 2, "load_n": 500, "b_mm": 40, "h_mm": 40})
     assert cell(md, "Maksimum sehim δ") == pytest.approx(29.76, rel=0.005)
@@ -56,6 +64,7 @@ def test_pump_shaft_bolt_wall_hand_calcs():
     ("bolt_check", {"size": "M99", "axial_n": 1}),
     ("bolt_check", {"size": "M10"}),
     ("wall_heat", {"layers": [], "t_in_c": 20, "t_out_c": 0}),
+    ("wall_heat", {"layers": ["beton"], "t_in_c": 20, "t_out_c": 0}),   # nesne degil: eskiden AttributeError sizardi
     ("pipe_pressure_drop", {"diameter_mm": -5, "length_m": 10, "flow_lps": 1}),
     ("pipe_pressure_drop", {"diameter_mm": 50, "length_m": 10}),
     ("beam_deflection", {"length_m": 2, "load_n": 500, "section": "hollow_square", "b_mm": 10, "t_mm": 6}),

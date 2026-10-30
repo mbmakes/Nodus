@@ -606,16 +606,21 @@ async def chat(request):
         return bad("Bu sohbette bir görev zaten çalışıyor.", 409)
     if UPDATE["state"] in ("running", "done"):
         return bad("Nodus güncelleniyor; birazdan yeniden açılacak.", 409)
-    text = str(form.get("text", "")).strip()
-    files = []
-    for f in form.getlist("files"):
-        files.append({"name": f.filename, "type": f.content_type, "data": await f.read()})
-    if not text and not files:
-        return bad("Boş görev gönderilemez.")
+    s.busy = True   # dosyalar okunurken (await) ikinci istek kontrolden gecip ayni sohbette iki gorev baslatmasin
+    try:
+        text = str(form.get("text", "")).strip()
+        files = []
+        for f in form.getlist("files"):
+            files.append({"name": f.filename, "type": f.content_type, "data": await f.read()})
+        if not text and not files:
+            s.busy = False
+            return bad("Boş görev gönderilemez.")
+    except BaseException:
+        s.busy = False
+        raise
     model_opt, auto_exec, verify_on = str(form.get("model", "auto")), flag(form.get("auto_exec")), flag(form.get("verify"))
 
     def job(emit):
-        s.busy = True
         s.cancel.clear()
         try:
             do_chat(emit, s, text, files, model_opt, auto_exec, verify_on)
@@ -636,9 +641,9 @@ async def decision(request):
         return bad("Bu sohbette bir görev zaten çalışıyor.", 409)
     approve, model_opt = bool(body.get("approve")), str(body.get("model", "auto"))
     auto_exec, verify_on = bool(body.get("auto_exec")), bool(body.get("verify"))
+    s.busy = True   # is parcacigi baslayana kadar ikinci bir karar istegi araya girmesin
 
     def job(emit):
-        s.busy = True
         s.cancel.clear()
         try:
             do_decision(emit, s, approve, model_opt, auto_exec, verify_on)

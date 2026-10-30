@@ -23,7 +23,7 @@ PROVIDERS = {
     "cerebras": {"base": "https://api.cerebras.ai/v1", "env": "CEREBRAS_API_KEY"},
     "mistral": {"base": "https://api.mistral.ai/v1", "env": "MISTRAL_API_KEY"},
     "openrouter": {"base": "https://openrouter.ai/api/v1", "env": "OPENROUTER_API_KEY", "free_only": True,
-                   "headers": {"HTTP-Referer": "http://localhost:8501", "X-Title": "Nodus Platform"}},
+                   "headers": {"HTTP-Referer": "https://github.com/mbmakes/Nodus", "X-Title": "Nodus"}},
     "ollama": {"base": "http://localhost:11434/v1", "env": None, "local": True},
 }
 # Gorev turune gore saglayici egilimi (hizli yorumlayicilar kisa isleri, Gemini agir isleri sever).

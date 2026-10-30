@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
+import codecs
 import os
 import re
+import signal
 import sys
 import tempfile
 import json
@@ -15,7 +17,7 @@ import subprocess
 import importlib.util
 from html import unescape
 from pathlib import Path
-from urllib.parse import urlparse, urljoin, parse_qs
+from urllib.parse import urlparse, urljoin
 
 import requests
 from backup_guard import BackupGuard, scrubbed_env
@@ -29,6 +31,7 @@ os.makedirs(WORKSPACE_DIR, exist_ok=True)
 ERR = "[HATA] "          # Tum arac hatalari bu onekle baslar (basari kontrolu icin)
 MAX_OUT = 8000
 MAX_FILE = 5 * 1024 * 1024
+MAX_ARG_CODE = 8000      # bundan uzun kod komut satirina degil dosyaya yazilir (tirnaklar kacislanirsa uzunluk ikiye katlanabilir)
 IGNORED_DIRS = {".git", "__pycache__", ".venv", "venv", "node_modules"}
 TEXT_EXT = (".py", ".json", ".md", ".txt", ".html", ".csv", ".js", ".ts", ".yaml", ".yml",
             ".toml", ".ini", ".cfg", ".bat", ".sh", ".c", ".cpp", ".h", ".m", ".xml")
@@ -180,7 +183,10 @@ def _kill_tree(p):
     if os.name == "nt":  # shell=True'da cocuk surecleri de oldur
         subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture_output=True)
     else:
-        p.kill()
+        try:
+            os.killpg(p.pid, signal.SIGKILL)   # _run sureci kendi grubunda baslatir; yalniz p.kill() "sh -c 'a && b'"nin cocuklarini birakir
+        except (ProcessLookupError, PermissionError):
+            p.kill()
 
 
 def kill_active() -> int:
@@ -199,7 +205,7 @@ def _run(cmd, timeout: int, shell: bool = False, container: str = None):
     p = subprocess.Popen(
         cmd, cwd=WORKSPACE_DIR, env=scrubbed_env(), shell=shell,
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, encoding="utf-8", errors="replace",
+        text=True, encoding="utf-8", errors="replace", start_new_session=(os.name != "nt"),
     )
     ACTIVE_PROCS.add(p)
     try:
@@ -358,7 +364,7 @@ def search_codebase(pattern: str, target_dir: str = ".") -> str:
                     with open(path, "r", encoding="utf-8", errors="ignore") as f:
                         for idx, line in enumerate(f, 1):
                             if needle in line.lower():
-                                results.append(f"{os.path.relpath(path, WORKSPACE_DIR)}:{idx} -> {line.strip()[:300]}")
+                                results.append(f"{os.path.relpath(path, root)}:{idx} -> {line.strip()[:300]}")   # root'a gore: baska surucudeki yolda relpath(WORKSPACE) ValueError verirdi
                                 if len(results) >= 50:
                                     return "\n".join(results)
                 except OSError:
@@ -378,8 +384,20 @@ def execute_python_code(code: str, timeout: int = 30) -> str:
     """Python kodunu workspace icinde, API anahtarsiz alt surecte calistirir."""
     try:
         timeout = max(1, min(int(timeout), 120))
-        rc, out, err = _run_py(["-X", "utf8", "-c", str(code)], timeout)
-        return _format_run(rc, out, err)
+        code = str(code)
+        if len(code) <= MAX_ARG_CODE:
+            return _format_run(*_run_py(["-X", "utf8", "-c", code], timeout))
+        # Windows komut satiri ~32 bin karakterle sinirli ("-c" ile uzun kod WinError 206 verirdi): gecici dosyadan calistir
+        script = os.path.join(WORKSPACE_DIR, f".nodus_{uuid.uuid4().hex[:8]}.py")
+        with open(script, "w", encoding="utf-8") as f:
+            f.write(code)
+        try:
+            return _format_run(*_run_py(["-X", "utf8", os.path.basename(script)], timeout))
+        finally:
+            try:
+                os.remove(script)
+            except OSError:
+                pass
     except subprocess.TimeoutExpired:
         return f"Calisma Hatasi:\nKod {timeout} saniyelik zaman asimina ugradi."
     except Exception as e:
@@ -455,6 +473,19 @@ def _assert_public_url(url: str):
             raise ValueError("Yerel/ozel ag adreslerine erisim engellendi (SSRF korumasi).")
 
 
+def _decode_body(buf: bytes, header_charset) -> str:
+    """Basliktaki charset, yoksa <meta charset>, o da yoksa UTF-8, en son cp1254 (Turkce). requests basliksiz text/* icin ISO-8859-1 varsayip
+    Turkce harfleri bozuyordu. Artimli cozucu, 1 MB'ta kesilen cok baytli harfi hata saymaz."""
+    meta = re.search(rb"(?i)<meta[^>]+charset=[\"']?([\w-]+)", buf[:4096])
+    for enc in (header_charset and header_charset.group(1), meta and meta.group(1).decode("ascii"), "utf-8", "cp1254"):
+        if enc:
+            try:
+                return codecs.getincrementaldecoder(enc)().decode(buf)
+            except (LookupError, UnicodeDecodeError):
+                continue
+    return buf.decode("utf-8", errors="replace")
+
+
 def fetch_url(url: str, max_chars: int = MAX_OUT) -> str:
     """Bir web sayfasini indirip okunabilir metne cevirir. Yerel/ozel adresler engellenir."""
     # shortcut: DNS kontrolu ile istek arasinda kucuk bir rebinding penceresi var; proxy/egress filtresi ekleyin.
@@ -486,7 +517,7 @@ def fetch_url(url: str, max_chars: int = MAX_OUT) -> str:
                 break
         r.close()
 
-        text = buf.decode(r.encoding or "utf-8", errors="replace")
+        text = _decode_body(buf, re.search(r"charset=([\w-]+)", ctype))
         if "html" in ctype or text.lstrip()[:15].lower().startswith(("<!doctype", "<html")):
             text = re.sub(r"(?is)<(script|style|noscript|svg)\b.*?</\1>", " ", text)
             text = unescape(re.sub(r"<[^>]+>", " ", text))
