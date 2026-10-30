@@ -35,7 +35,7 @@ Example tasks:
 
 | | |
 |---|---|
-| **Verified calculations** | Pipe pressure drop (Darcy-Weisbach + Colebrook-White), beam deflection and stress, saturated steam tables, pump/fan power, shaft torsion, bolt check, multi-layer wall heat transfer, heat exchanger (LMTD), Euler column buckling, orifice flow, bearing life (L10), psychrometrics and NPSH. The model never writes formulas from memory: it calls the unit-tested functions of the `eng_calc` tool. Out-of-range inputs (for example "water" that is actually steam at the given state) are flagged instead of silently computed. |
+| **Verified calculations** | Pipe pressure drop (Darcy-Weisbach + Colebrook-White), beam deflection and stress, saturated steam tables, pump/fan power, shaft torsion, bolt check, multi-layer wall heat transfer, heat exchanger (LMTD), Euler column buckling, orifice flow, bearing life (L10), psychrometrics, NPSH, thin-wall pressure vessels and fatigue (Goodman). The model never writes formulas from memory: it calls the unit-tested functions of the `eng_calc` tool. Out-of-range inputs (for example "water" that is actually steam at the given state) are flagged instead of silently computed. |
 | **Multi-provider router** | Chooses between Gemini, Groq, OpenRouter, Cerebras and Mistral by task type, and falls back automatically when a quota runs out or a provider stops answering. |
 | **Cross-checking** | For heavy tasks the answer is reviewed by a model from a different provider. If it objects, the calculation is redone once with the objection attached. |
 | **Approval gate** | Code, shell commands, file deletion and persistent memory writes need your approval. The approval screen shows the code that will *actually* run, including referenced files. |
@@ -162,7 +162,7 @@ Found a vulnerability? Please follow [SECURITY.md](SECURITY.md).
 ## Tests
 
 ```bash
-python -m pytest tests -q -p no:cacheprovider      # 104 tests
+python -m pytest tests -q -p no:cacheprovider      # 107 tests
 ```
 
 They cover agent and tool behaviour, the security policy, the server endpoints (a real uvicorn with a fake model), stopping and process killing, reports, search and calculation accuracy against hand calculations. GitHub Actions runs them on Windows, macOS and Linux on every push, together with the launcher and installer smoke tests.
@@ -179,7 +179,7 @@ They cover agent and tool behaviour, the security policy, the server endpoints (
 ## Roadmap
 
 - English interface and replies by default
-- More verified calculations (fatigue, pressure vessels, pipe networks)
+- More verified calculations (pipe networks, thick-wall vessels, welded joints)
 - Docker sandbox on by default when Docker is available
 - Interactive previews for charts inside answers
 - Verifying macOS support on real hardware

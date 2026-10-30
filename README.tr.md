@@ -34,7 +34,7 @@ Bir görevi Türkçe yazarsın; Nodus planlar, doğru aracı seçer, hesabı yap
 
 | | |
 |---|---|
-| **Hazır, doğrulanmış hesaplar** | Boru basınç kaybı (Darcy-Weisbach + Colebrook-White), kiriş sehimi ve gerilmesi, doymuş buhar tablosu, pompa/fan gücü, mil burulması, cıvata kontrolü, çok katmanlı duvardan ısı geçişi, eşanjör (LMTD), Euler kolon burkulması, orifis debisi, rulman ömrü (L10), nemli hava ve NPSH. Model formülü kafasından yazmaz; `eng_calc` aracı ile birim testli fonksiyonları çağırır. Geçersiz koşullar (örneğin o halde aslında buhar olan "su") sessizce hesaplanmaz, uyarılır. |
+| **Hazır, doğrulanmış hesaplar** | Boru basınç kaybı (Darcy-Weisbach + Colebrook-White), kiriş sehimi ve gerilmesi, doymuş buhar tablosu, pompa/fan gücü, mil burulması, cıvata kontrolü, çok katmanlı duvardan ısı geçişi, eşanjör (LMTD), Euler kolon burkulması, orifis debisi, rulman ömrü (L10), nemli hava, NPSH, ince cidarlı basınçlı kap ve yorulma (Goodman). Model formülü kafasından yazmaz; `eng_calc` aracı ile birim testli fonksiyonları çağırır. Geçersiz koşullar (örneğin o halde aslında buhar olan "su") sessizce hesaplanmaz, uyarılır. |
 | **Çoklu model yönlendirici** | Gemini, Groq, OpenRouter, Cerebras ve Mistral arasında görev türüne göre seçim yapar; kota dolunca ya da sağlayıcı yanıt vermezse otomatik yedeğe geçer. |
 | **Çapraz doğrulama** | Ağır görevlerde cevap, farklı bir sağlayıcının modeline denetlettirilir. Model itiraz ederse hesap, itiraz notuyla bir kez yeniden yaptırılır. |
 | **Onay kapısı** | Kod çalıştırma, kabuk komutu, dosya silme, kalıcı hafıza yazımı onay ister. Onay ekranında *gerçekte çalışacak* kod (başvurulan dosyalar dahil) gösterilir. |
@@ -159,7 +159,7 @@ Tarayıcı (web/)  ──SSE──►  server.py (Starlette)
 ## Testler
 
 ```bash
-python -m pytest tests -q -p no:cacheprovider      # 104 test
+python -m pytest tests -q -p no:cacheprovider      # 107 test
 ```
 
 Ajan/araç davranışı, güvenlik politikası, sunucu uçları (gerçek uvicorn + sahte model), durdurma ve süreç öldürme, rapor, arama ve hesap doğrulukları kapsanır.
@@ -176,7 +176,7 @@ Ajan/araç davranışı, güvenlik politikası, sunucu uçları (gerçek uvicorn
 ## Yol haritası
 
 - İngilizce arayüz ve varsayılan cevaplar
-- Daha fazla doğrulanmış hesap (yorulma, basınçlı kap, boru ağları)
+- Daha fazla doğrulanmış hesap (boru ağları, kalın cidarlı kap, kaynak bağlantıları)
 - Docker varsa sandbox'ı varsayılan yapma
 - Cevap içi grafikler için etkileşimli önizleme
 - macOS desteğini gerçek donanımda doğrulama

@@ -75,7 +75,19 @@ def test_exchanger_buckling_orifice_bearing_psychro_npsh_hand_calcs():
     assert "kavitasyon" in engcalc.run("npsh_available", {"temperature_c": 20, "npsh_required_m": 10.5})
 
 
+def test_pressure_vessel_and_fatigue_hand_calcs():
+    pv = engcalc.run("pressure_vessel", {"pressure_mpa": 2, "inner_d_mm": 500, "thickness_mm": 5})
+    assert cell(pv, "Çevresel gerilme") == pytest.approx(2 * 500 / (2 * 5)) and cell(pv, "Eksenel gerilme") == pytest.approx(2 * 500 / (4 * 5))
+    assert cell(pv, "Von Mises") == pytest.approx(math.sqrt(3) / 2 * 100, rel=0.001)
+    assert cell(engcalc.run("pressure_vessel", {"pressure_mpa": 2, "inner_d_mm": 500, "thickness_mm": 5, "shape": "sphere"}), "Gerilme σ") == pytest.approx(50)
+    ft = engcalc.run("fatigue_goodman", {"sigma_max_mpa": 200, "sigma_min_mpa": 0, "ult_mpa": 500, "endurance_mpa": 200})
+    assert cell(ft, "Yorulma güvenlik katsayısı") == pytest.approx(1 / (100 / 200 + 100 / 500), rel=0.002)
+    assert "Uyarı" in engcalc.run("fatigue_goodman", {"sigma_max_mpa": 400, "sigma_min_mpa": 0, "ult_mpa": 500, "endurance_mpa": 200, "yield_mpa": 350})
+
+
 @pytest.mark.parametrize("calc,params", [
+    ("pressure_vessel", {"pressure_mpa": 2, "inner_d_mm": 100, "thickness_mm": 20}),                      # D/t < 20: kalin cidar
+    ("fatigue_goodman", {"sigma_max_mpa": 10, "sigma_min_mpa": 50, "ult_mpa": 500, "endurance_mpa": 200}),
     ("heat_exchanger", {"t_hot_in": 50, "t_hot_out": 40, "t_cold_in": 60, "t_cold_out": 70, "q_kw": 1}),   # sicak taraf soguktan soguk
     ("column_buckling", {"length_m": 1, "end": "x", "b_mm": 10, "h_mm": 10}),
     ("orifice_flow", {"pipe_d_mm": 100, "orifice_d_mm": 95, "dp_kpa": 10}),                                # beta > 0.75

@@ -209,6 +209,8 @@ KULLANABILECEGIN ARACLAR:
    - Orifis debisi: {{"calc": "orifice_flow", "params": {{"pipe_d_mm": 100, "orifice_d_mm": 50, "dp_kpa": 10, "density_kgm3": 1000, "cd": 0.61}}}} (beta 0.1-0.75)
    - Rulman omru: {{"calc": "bearing_life", "params": {{"c_kn": 30, "p_kn": 5, "rpm": 1500, "type": "ball|roller"}}}}
    - Nemli hava: {{"calc": "psychrometrics", "params": {{"t_c": 25, "rh_percent": 50, "pressure_bar": 1.01325}}}}
+   - Ince cidarli basincli kap: {{"calc": "pressure_vessel", "params": {{"pressure_mpa": 2, "inner_d_mm": 500, "thickness_mm": 5, "shape": "cylinder|sphere", "yield_mpa": 250}}}} (D/t >= 20)
+   - Yorulma (Goodman): {{"calc": "fatigue_goodman", "params": {{"sigma_max_mpa": 200, "sigma_min_mpa": 0, "ult_mpa": 500, "endurance_mpa": 200, "yield_mpa": 350}}}}
    - NPSH (mevcut): {{"calc": "npsh_available", "params": {{"temperature_c": 20, "surface_pressure_bar": 1.01325, "static_head_m": 2, "loss_m": 1.5, "npsh_required_m": 3}}}}
 22. save_user_file: Masaustu/Belgeler/Indirilenler klasorune METIN dosyasi yazar (var olan dosyanin uzerine yazmaz; yeni dosya icin guvenli kisayol; write_file mutlak yolla da calisir). Onay gerekir. {{"folder": "desktop|documents|downloads", "filename": "not.txt", "content": "icerik", "overwrite": false}}
 23. open_app: Uygulama, dosya ya da web adresi acar ve beklemez. Onay gerekir. {{"target": "Safari"}} (macOS uygulama adi; Windows: notepad, chrome; dosya yolu ya da https://... adresi de olur)

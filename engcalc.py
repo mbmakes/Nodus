@@ -417,7 +417,52 @@ def npsh_available(params: dict) -> str:
             "\n\nNPSHa = (P_yüzey − Pv)/(ρ·g) + z − h_kayıp" + verdict)
 
 
-CALCS = {"pipe_pressure_drop": pipe_pressure_drop, "beam_deflection": beam_deflection, "steam_table": steam_table,
+def pressure_vessel(params: dict) -> str:
+    """Ince cidarli basincli kap (silindir/kure). params: pressure_mpa (ic basinc, etkin), inner_d_mm, thickness_mm,
+    shape=cylinder|sphere, yield_mpa=250"""
+    shape = str(params.get("shape", "cylinder")).lower()
+    if shape not in ("cylinder", "sphere"):
+        raise ValueError("shape cylinder (silindir) veya sphere (küre) olmalı.")
+    p, d, t = _num(params, "pressure_mpa"), _num(params, "inner_d_mm"), _num(params, "thickness_mm")
+    fy = _num(params, "yield_mpa", 250)
+    if d / t < 20:
+        raise ValueError(f"D/t = {d / t:.1f} < 20: ince cidar kabulü geçersiz, kalın cidarlı (Lamé) hesabı gerekir.")
+    if shape == "cylinder":
+        hoop, axial = p * d / (2 * t), p * d / (4 * t)
+        vm = math.sqrt(hoop ** 2 - hoop * axial + axial ** 2)
+        rows = f"| Çevresel gerilme σθ = P·D/(2t) | {hoop:.4g} | MPa |\n| Eksenel gerilme σz = P·D/(4t) | {axial:.4g} | MPa |\n"
+    else:
+        hoop = p * d / (4 * t)
+        vm = hoop
+        rows = f"| Gerilme σ = P·D/(4t) | {hoop:.4g} | MPa |\n"
+    return (f"**İnce cidarlı basınçlı kap** ({'silindir' if shape == 'cylinder' else 'küre'})\n\n| Büyüklük | Değer | Birim |\n|---|---:|---|\n"
+            f"| İç çap D / et kalınlığı t | {d:g} / {t:g} (D/t = {d / t:.3g}) | mm |\n| İç basınç P | {p:g} | MPa |\n" + rows +
+            f"| Von Mises eşdeğer gerilme | {vm:.4g} | MPa |\n| **Güvenlik katsayısı** (akma/eşdeğer) | **{fy / vm:.3g}** | - |\n\n"
+            "Yalnızca ince cidar (D/t ≥ 20) ve iç gauge basınç için; yönetmelik (ASME/EN 13445) hesabının yerine geçmez.")
+
+
+def fatigue_goodman(params: dict) -> str:
+    """Yorulma guvenlik katsayisi (Goodman). params: sigma_max_mpa, sigma_min_mpa, ult_mpa (Su), endurance_mpa (Se duzeltilmis), yield_mpa (opsiyonel)"""
+    smax, smin = _num(params, "sigma_max_mpa", positive=False), _num(params, "sigma_min_mpa", positive=False)
+    if smax < smin:
+        raise ValueError("sigma_max_mpa, sigma_min_mpa'dan küçük olamaz.")
+    su, se = _num(params, "ult_mpa"), _num(params, "endurance_mpa")
+    sa, sm = (smax - smin) / 2, (smax + smin) / 2
+    n = 1 / (sa / se + sm / su) if (sa / se + sm / su) > 0 else float("inf")
+    rows = (f"| Gerilme genliği σa | {sa:.4g} | MPa |\n| Ortalama gerilme σm | {sm:.4g} | MPa |\n"
+            f"| Çekme dayanımı Su / yorulma sınırı Se | {su:g} / {se:g} | MPa |\n| **Yorulma güvenlik katsayısı** (Goodman) | **{n:.3g}** | - |\n")
+    note = ""
+    if "yield_mpa" in params:
+        fy = _num(params, "yield_mpa")
+        ny = fy / max(abs(smax), abs(smin)) if max(abs(smax), abs(smin)) else float("inf")
+        rows += f"| Akma güvenlik katsayısı (σmax'a göre) | {ny:.3g} | - |\n"
+        if ny < 1:
+            note = "\n\n**Uyarı:** maksimum gerilme akma dayanımını aşıyor; Goodman tek başına yeterli değil."
+    return ("**Yorulma (Goodman)**\n\n| Büyüklük | Değer | Birim |\n|---|---:|---|\n" + rows +
+            "\n1/n = σa/Se + σm/Su. Se, yüzey/boyut/yük düzeltmeleri uygulanmış değer olmalı; sonsuz ömür ve σm ≥ 0 varsayılır." + note)
+
+
+CALCS = {"pressure_vessel": pressure_vessel, "fatigue_goodman": fatigue_goodman, "pipe_pressure_drop": pipe_pressure_drop, "beam_deflection": beam_deflection, "steam_table": steam_table,
          "pump_power": pump_power, "shaft_torsion": shaft_torsion, "bolt_check": bolt_check, "wall_heat": wall_heat,
          "heat_exchanger": heat_exchanger, "column_buckling": column_buckling, "orifice_flow": orifice_flow,
          "bearing_life": bearing_life, "psychrometrics": psychrometrics, "npsh_available": npsh_available}
