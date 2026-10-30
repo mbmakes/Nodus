@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Windows | macOS | Linux">
 </p>
 
-> **Status: v1.10-beta.** Close to daily use, but not widely tested yet. See [Limits](#limits-and-beta-notes) for what to keep in mind.
+> **Status: v1.11-beta.** Close to daily use, but not widely tested yet. See [Limits](#limits-and-beta-notes) for what to keep in mind.
 > The interface and the agent's default replies are in **Turkish** for now; an English interface is on the [roadmap](#roadmap). The agent understands English tasks.
 
 ![Calculation sheet: step log, equations and tables](docs/img/hesap-foyu.png)
@@ -69,6 +69,16 @@ irm https://raw.githubusercontent.com/mbmakes/Nodus/master/install.ps1 | iex
 ```
 
 The command downloads the latest release into `~/Nodus` (Windows: `%USERPROFILE%\Nodus`). **If Python 3.12 is missing, it installs a portable copy inside that folder, without admin rights** (via [uv](https://github.com/astral-sh/uv); the SHA-256 of the download is verified), installs the libraries and starts Nodus. On first launch a **key dialog** appears: paste a free [Gemini key](https://aistudio.google.com/apikey), it is validated and saved, so you never have to edit `.env` by hand. Next time, `run_nodus.bat` (Windows) or `bash run_nodus.sh` (macOS/Linux) in that folder is enough. If you prefer to read the scripts first: [`install.sh`](install.sh), [`install.ps1`](install.ps1).
+
+### Getting your free key (about 1 minute)
+
+Nodus needs an AI provider key, and it has to be your own: each person's free quota belongs to their account. The first-run dialog walks you through it, and it needs no credit card:
+
+1. Click **Open key page** in the dialog (or go to [aistudio.google.com/apikey](https://aistudio.google.com/apikey)) and sign in with a Google account.
+2. Click **Create API key** and copy the long text it shows.
+3. Paste it into the dialog (or press **Paste from clipboard**). Nodus recognises which provider the key belongs to, checks that it works and saves it on your computer only.
+
+Want more free quota? Open **Settings → Add / change key** and add Groq, OpenRouter, Cerebras or Mistral keys the same way; Nodus spreads the load across them.
 
 ### Manual install
 

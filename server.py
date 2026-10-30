@@ -35,7 +35,7 @@ load_dotenv(override=True)
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
-from starlette.responses import FileResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
+from starlette.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
@@ -774,7 +774,10 @@ async def reset_all(request):
 
 
 async def index(request):
-    return FileResponse(os.path.join(WEB_DIR, "index.html"), headers={"Cache-Control": "no-cache"})
+    # Betik/stil adreslerine her baslangicta degisen ?v= eklenir: guncellemeden sonra tarayici onbellegindeki eski app.js kullanilmaz
+    with open(os.path.join(WEB_DIR, "index.html"), encoding="utf-8") as f:
+        html = re.sub(r'(/static/[\w./-]+\.(?:js|css))"', rf'\1?v={BOOT_ID}"', f.read())
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 
 # ------------------------------------------------------------------
@@ -806,6 +809,8 @@ class Guard:
                 headers = list(msg.get("headers", []))
                 headers += [(b"content-security-policy", CSP.encode()), (b"x-frame-options", b"DENY"),
                             (b"referrer-policy", b"no-referrer")]
+                if scope["path"].startswith("/static/"):   # cache basligi yoksa tarayici guncellemeden sonra eski app.js'i kullanabilir; no-cache = ETag ile dogrula
+                    headers.append((b"cache-control", b"no-cache"))
                 msg = {**msg, "headers": headers}
             await send(msg)
         await self.app(scope, receive, send_with_headers)

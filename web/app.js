@@ -652,6 +652,10 @@ async function removeSession(id, skipConfirm) {
 // ------------------------------------------------------------------ ilk kurulum: anahtar ekleme
 const KEY_PROVIDERS = [['gemini', 'Gemini'], ['groq', 'Groq'], ['openrouter', 'OpenRouter'], ['cerebras', 'Cerebras'], ['mistral', 'Mistral']];
 const setup = { busy: false, error: '', text: '', vals: {} };
+// Sağlayıcıların anahtar önekleri: kullanıcı hangi sağlayıcının anahtarı olduğunu bilmeden yapıştırabilsin
+const KEY_HINTS = [[/^AIza[\w-]{30,}$/, 'gemini'], [/^gsk_\w{20,}$/, 'groq'], [/^sk-or-[\w-]{20,}$/, 'openrouter'], [/^csk-\w{20,}$/, 'cerebras'], [/^[A-Za-z0-9]{32}$/, 'mistral']];
+const detectProvider = (k) => { const hit = KEY_HINTS.find(([re]) => re.test(k)); return hit ? hit[1] : null; };
+const providerName = (k) => (KEY_PROVIDERS.find(([id]) => id === k) || [, k])[1];
 
 function paintSetup() {
   const body = $('#setup-body');
@@ -665,8 +669,14 @@ function paintSetup() {
   const submit = async (e) => {
     e.preventDefault();
     const payload = {};
-    for (const [k] of KEY_PROVIDERS) if (inputs[k].value.trim()) payload[k] = inputs[k].value.trim();
-    if (!Object.keys(payload).length) { setup.error = 'En az bir anahtar yaz.'; return paintSetup(); }
+    for (const [k] of KEY_PROVIDERS) if (inputs[k] && inputs[k].value.trim()) payload[k] = inputs[k].value.trim();
+    const pasted = inputs.main.value.trim();
+    if (pasted) {
+      const prov = detectProvider(pasted);
+      if (!prov) { setup.error = 'Bu anahtarı tanıyamadım. Gemini anahtarları “AIza” ile başlar; kopyalarken baştan ya da sondan karakter kaçmış olabilir. Başka bir sağlayıcınınsa aşağıdaki “Başka sağlayıcılar” bölümünü kullan.'; return paintSetup(); }
+      payload[prov] = pasted;
+    }
+    if (!Object.keys(payload).length) { setup.error = 'Önce anahtarı yapıştır.'; return paintSetup(); }
     setup.busy = true; setup.error = ''; setup.text = 'Anahtar doğrulanıyor…'; paintSetup();
     let boot0;
     try {
@@ -682,16 +692,36 @@ function paintSetup() {
       if (Date.now() - t0 > 90000) { setup.busy = false; setup.error = "Yeniden başlatma uzun sürdü. Nodus'u kapatıp yeniden aç."; return paintSetup(); }
     }
   };
+  const found = el('small', { class: 'key-detect', 'aria-live': 'polite' });
+  const detect = (v) => {
+    v = v.trim();
+    const prov = detectProvider(v);
+    found.className = 'key-detect' + (prov ? ' ok' : '');
+    found.textContent = !v ? '' : prov ? `✓ ${providerName(prov)} anahtarı gibi görünüyor` : 'Bu henüz tam bir anahtara benzemiyor; baştan sona kopyaladığından emin ol.';
+  };
+  inputs.main = el('input', { type: 'text', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Anahtar', disabled: setup.busy,
+    placeholder: S.keys.gemini ? 'kayıtlı; değiştirmek için yeni anahtarı yapıştır' : 'AIza… ile başlayan anahtarı buraya yapıştır', value: setup.vals.main || '',
+    oninput: (e) => { setup.vals.main = e.target.value; detect(e.target.value); } });
+  detect(inputs.main.value);
+  const pasteBtn = el('button', { class: 'btn', type: 'button', disabled: setup.busy, text: 'Panodan yapıştır', onclick: async () => {
+    try {
+      const t = (await navigator.clipboard.readText()).trim();
+      inputs.main.value = t; setup.vals.main = t; detect(t);
+    } catch { setup.error = 'Panoya erişemedim; anahtarı kutuya Ctrl+V ile yapıştır.'; paintSetup(); }
+  } });
   body.replaceChildren(
-    el('p', { class: 'key-intro' }, 'Nodus, bir yapay zeka sağlayıcısının ', el('b', { text: 'ücretsiz anahtarıyla' }), ' çalışır. En kolayı Google Gemini: ',
-      el('a', { href: 'https://aistudio.google.com/apikey', target: '_blank', rel: 'noopener noreferrer', text: 'aistudio.google.com/apikey' }),
-      ' adresinde “Create API key” de, çıkan anahtarı aşağı yapıştır. Anahtar yalnızca bu bilgisayarda saklanır.'),
+    el('p', { class: 'key-intro' }, 'Nodus yapay zekayı Google’ın ', el('b', { text: 'ücretsiz' }), ' Gemini hizmetiyle çalıştırır. Bunun için kendi hesabından bir “anahtar” (uzun bir şifre) almak gerekir. ',
+      el('b', { text: 'Kredi kartı istemez, yaklaşık 1 dakika sürer.' }), ' Anahtar yalnızca bu bilgisayarda saklanır.'),
     el('form', { class: 'key-form', onsubmit: submit },
-      row('gemini', 'Gemini (önerilen)', 'Ağır hesaplar ve görsel okuma için.'),
-      row('groq', 'Groq (isteğe bağlı)', 'Hızlı cevaplar ve sesli komut için. console.groq.com'),
-      row('openrouter', 'OpenRouter (isteğe bağlı)', 'Yedek model havuzu. openrouter.ai'),
-      row('cerebras', 'Cerebras (isteğe bağlı)', 'Çok hızlı cevaplar. cloud.cerebras.ai'),
-      row('mistral', 'Mistral (isteğe bağlı)', 'Ek yedek havuz. console.mistral.ai'),
+      el('ol', { class: 'key-steps' },
+        el('li', {}, 'Google hesabınla giriş yap. ', el('a', { class: 'btn btn-sm', href: 'https://aistudio.google.com/apikey', target: '_blank', rel: 'noopener noreferrer', text: 'Anahtar sayfasını aç ↗' })),
+        el('li', { text: '“Create API key” (Anahtar oluştur) düğmesine bas; çıkan uzun metni kopyala (yanındaki kopyala simgesi işini görür).' }),
+        el('li', {}, 'Buraya yapıştır:', el('div', { class: 'key-main' }, inputs.main, pasteBtn), found)),
+      el('details', { class: 'key-more' }, el('summary', { text: 'Başka sağlayıcılar (isteğe bağlı: daha fazla ücretsiz kota)' }),
+        row('groq', 'Groq', 'Hızlı cevaplar ve sesli komut için. console.groq.com'),
+        row('openrouter', 'OpenRouter', 'Yedek model havuzu. openrouter.ai'),
+        row('cerebras', 'Cerebras', 'Çok hızlı cevaplar. cloud.cerebras.ai'),
+        row('mistral', 'Mistral', 'Ek yedek havuz. console.mistral.ai')),
       ...(setup.error ? [el('p', { class: 'upd-err', role: 'alert', text: setup.error })] : []),
       ...(setup.busy ? [el('div', { class: 'status-line' }, el('i', { class: 'spin' }), setup.text)] : []),
       el('div', { class: 'row-btns' },

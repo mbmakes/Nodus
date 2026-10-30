@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Windows | macOS | Linux">
 </p>
 
-> **Sürüm: v1.10-beta.** Günlük kullanıma yakın ama henüz geniş çapta denenmedi. Bilinen sınırlar için [Sınırlar](#sınırlar-ve-beta-notları) bölümüne bak.
+> **Sürüm: v1.11-beta.** Günlük kullanıma yakın ama henüz geniş çapta denenmedi. Bilinen sınırlar için [Sınırlar](#sınırlar-ve-beta-notları) bölümüne bak.
 
 ![Hesap föyü: adım kaydı, denklem ve tablo](docs/img/hesap-foyu.png)
 
@@ -68,6 +68,16 @@ irm https://raw.githubusercontent.com/mbmakes/Nodus/master/install.ps1 | iex
 ```
 
 Bu komut son sürümü `~/Nodus` klasörüne (Windows: `%USERPROFILE%\Nodus`) indirir; **Python 3.12 yoksa klasörün içine, yönetici izni istemeden kurar** (taşınabilir, [uv](https://github.com/astral-sh/uv) ile; indirilen dosyanın SHA-256 özeti doğrulanır), kütüphaneleri kurar ve Nodus'u açar. İlk açılışta bir **anahtar penceresi** gelir: ücretsiz [Gemini anahtarını](https://aistudio.google.com/apikey) yapıştırırsın, doğrulanır ve kaydedilir; `.env` dosyasını elle düzenlemen gerekmez. Sonraki açılışlar için klasördeki `run_nodus.bat` (Windows) ya da `bash run_nodus.sh` (macOS/Linux) yeter. Önce betiği okumak istersen: [`install.sh`](install.sh), [`install.ps1`](install.ps1).
+
+### Ücretsiz anahtarını almak (yaklaşık 1 dakika)
+
+Nodus'un bir yapay zeka sağlayıcısının anahtarına ihtiyacı var ve bu anahtar senin kendi hesabından olmalı: ücretsiz kota hesaba bağlıdır. İlk açılışta çıkan pencere seni adım adım yönlendirir, kredi kartı istemez:
+
+1. Penceredeki **Anahtar sayfasını aç** düğmesine bas (ya da [aistudio.google.com/apikey](https://aistudio.google.com/apikey) adresine git) ve Google hesabınla giriş yap.
+2. **Create API key** düğmesine bas, çıkan uzun metni kopyala.
+3. Pencereye yapıştır (ya da **Panodan yapıştır**'a bas). Nodus anahtarın hangi sağlayıcıya ait olduğunu kendisi tanır, çalıştığını denetler ve yalnızca senin bilgisayarına kaydeder.
+
+Daha fazla ücretsiz kota istersen **Ayarlar → Anahtar ekle / değiştir** bölümünden Groq, OpenRouter, Cerebras ya da Mistral anahtarlarını aynı şekilde ekleyebilirsin; Nodus yükü aralarında paylaştırır.
 
 ### Elle kurulum
 

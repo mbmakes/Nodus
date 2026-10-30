@@ -66,6 +66,10 @@ def test_guard_blocks_foreign_host_origin_and_missing_header(srv):
     assert requests.post(base + "/api/session", headers={**H, "Origin": "http://evil.example"}).status_code == 403
     assert requests.post(base + "/api/session", headers=H).status_code == 200
     assert "default-src 'self'" in requests.get(base + "/").headers["content-security-policy"]
+    assert requests.get(base + "/static/app.js").headers["cache-control"] == "no-cache"   # guncellemeden sonra eski arayuz kodu kalmasin
+    page = requests.get(base + "/").text
+    assert 'src="/static/app.js?v=' in page and 'href="/static/app.css?v=' in page       # adres her baslangicta degisir: eski onbellek kullanilmaz
+    assert requests.get(base + "/static/app.js?v=1").status_code == 200
 
 
 def test_chat_streams_and_persists(srv, monkeypatch):
