@@ -90,9 +90,93 @@ def test_chat_streams_and_persists(srv, monkeypatch):
 @pytest.mark.skipif(not shutil.which("node"), reason="Node.js yok")
 def test_frontend_scripts_have_valid_syntax():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    for name in ("app.js", "theme.js", "dock-init.js"):   # sozdizimi hatasi bos ekran demek; eskiden hicbir test bunu gormuyordu
+    for name in ("app.js", "theme.js", "dock-init.js", "voice.js"):   # sozdizimi hatasi bos ekran demek; eskiden hicbir test bunu gormuyordu
         r = subprocess.run(["node", "--check", os.path.join(root, "web", name)], capture_output=True, text=True)
         assert r.returncode == 0, f"{name}: {r.stderr[:400]}"
+
+
+def test_voice_page_hint_spoken_text_and_full_auto(srv, monkeypatch):
+    server, base = srv
+    page = requests.get(base + "/voice").text
+    assert 'src="/static/voice.js?v=' in page and 'id="orb"' in page            # sesli mod ayri sayfa, ayni onbellek kurali
+    seen = []
+
+    def model(model_name, prompt_content="", history=None, available_models=None, on_token=None):
+        seen.append(str(prompt_content) + str(history))
+        return ['EYLEM_DETAYI:\n{"action": "delete_file", "params": {"filename": "yok_boyle_dosya.tmp"}}', "Yüz on virgul dokuz kilopaskal."][len(seen) - 1]
+    monkeypatch.setattr(server.agent, "call_model", model)
+    monkeypatch.setattr(server.agent, "select_best_model", lambda p, m=None: ("auto:fast", "test"))
+    sid = new_sid(base)
+    data = {"sid": sid, "text": "boru kaybi", "model": "auto", "voice": "1", "full_auto": "1", "auto_exec": "1"}
+    last = events(requests.post(base + "/api/chat", headers=H, data=data))[-1]
+    assert last["pending"] is None                                              # delete_file normalde sorar; onaysiz modda sormadan calisti
+    assert last["spoken"] == "Yüz on virgul dokuz kilopaskal."                  # tablo/arac ciktisi degil, modelin son cumlesi okunur
+    assert "SESLI SOHBET" in seen[0]                                            # model kisa, konusma diliyle cevaplamasi icin uyarilir
+
+
+def test_elevenlabs_proxy_keeps_key_server_side_and_reports_quota(srv, monkeypatch, tmp_path):
+    import types
+    server, base = srv
+    monkeypatch.setenv("NODUS_EDGE_TTS", "0")   # bu testte Microsoft sesine dusulmesin
+    monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+    assert requests.post(base + "/api/tts", headers={**H}, json={"text": "merhaba"}).status_code == 409   # sunucu sesi yok: tarayici sesine donulur
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "sk_test_0123456789abcdef")
+    monkeypatch.setenv("ELEVENLABS_VOICE_ID", "voice123")
+    calls, reply = [], {"status": 200, "text": ""}
+
+    def fake_post(url, **kw):
+        calls.append((url, kw))
+        return types.SimpleNamespace(status_code=reply["status"], content=b"ID3fakeaudio", text=reply["text"])
+    fake = types.SimpleNamespace(post=fake_post, get=None, HTTPError=requests.HTTPError, RequestException=requests.RequestException)
+    monkeypatch.setattr(server, "requests", fake)
+    r = requests.post(base + "/api/tts", headers=H, json={"text": "yüz on virgül sekiz kilopaskal"})
+    assert r.status_code == 200 and r.content == b"ID3fakeaudio" and r.headers["content-type"] == "audio/mpeg"
+    url, kw = calls[0]
+    assert url.endswith("/text-to-speech/voice123") and kw["headers"]["xi-api-key"] == "sk_test_0123456789abcdef"
+    assert "sk_test_0123456789abcdef" not in r.text and kw["json"]["text"].startswith("yüz on")        # anahtar tarayiciya sizmaz
+    reply.update(status=429, text="quota_exceeded")
+    r = requests.post(base + "/api/tts", headers=H, json={"text": "merhaba"})
+    assert r.status_code == 502 and r.json()["quota"] is True                                          # kota bitti: arayuz tarayici sesine doner
+    reply.update(status=500, text="hata")
+    assert requests.post(base + "/api/tts", headers=H, json={"text": "merhaba"}).json()["quota"] is False
+    assert requests.post(base + "/api/tts", headers=H, json={"text": "  "}).status_code == 400
+
+    # anahtar kaydi: gecersiz anahtar reddedilir ve .env'e yazilmaz; kisitli izinli anahtar kabul edilir
+    monkeypatch.setattr(server, "ENV_PATH", str(tmp_path / ".env"))
+    answers = {"r": types.SimpleNamespace(status_code=401, text='{"detail":{"status":"invalid_api_key"}}')}
+    monkeypatch.setattr(server, "requests", types.SimpleNamespace(get=lambda *a, **k: answers["r"], RequestException=requests.RequestException))
+    assert requests.post(base + "/api/setup/eleven", headers=H, json={"key": "sk_bad_0123456789abcdef"}).status_code == 400
+    assert not (tmp_path / ".env").exists()
+    answers["r"] = types.SimpleNamespace(status_code=401, text='{"detail":{"status":"missing_permissions"}}')
+    ok = requests.post(base + "/api/setup/eleven", headers=H, json={"key": "sk_new_0123456789abcdef"})
+    assert ok.status_code == 200 and "ELEVENLABS_API_KEY=sk_new_0123456789abcdef" in (tmp_path / ".env").read_text()
+    assert requests.post(base + "/api/setup/eleven", headers=H, json={"key": "kısa anahtar"}).status_code == 400
+
+
+def test_free_microsoft_voice_is_default_and_catches_elevenlabs_quota(srv, monkeypatch):
+    import types
+    server, base = srv
+    monkeypatch.setenv("NODUS_EDGE_TTS", "1")
+    monkeypatch.setattr(server, "edge_available", lambda: True)
+    seen = []
+
+    async def fake_edge(text, voice):
+        seen.append(voice)
+        return b"ID3edge"
+    monkeypatch.setattr(server, "_edge_audio", fake_edge)
+    monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+    assert server.tts_engine() == "edge"                                                   # anahtar yoksa ucretsiz sinir agi sesi
+    r = requests.post(base + "/api/tts", headers=H, json={"text": "merhaba", "voice": "tr-TR-AhmetNeural"})
+    assert r.status_code == 200 and r.content == b"ID3edge" and seen == ["tr-TR-AhmetNeural"]
+    requests.post(base + "/api/tts", headers=H, json={"text": "merhaba", "voice": "baska-bir-ses"})
+    assert seen[-1] == server.EDGE_VOICES[0]                                               # listede olmayan ses istenemez
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "sk_test_0123456789abcdef")
+    monkeypatch.setenv("ELEVENLABS_VOICE_ID", "v1")
+    quota = types.SimpleNamespace(post=lambda *a, **k: types.SimpleNamespace(status_code=429, content=b"", text="quota_exceeded"),
+                                  HTTPError=requests.HTTPError, RequestException=requests.RequestException)
+    monkeypatch.setattr(server, "requests", quota)
+    r = requests.post(base + "/api/tts", headers=H, json={"text": "merhaba"})
+    assert r.status_code == 200 and r.content == b"ID3edge"                                # ElevenLabs kotasi bitti: kullanici sessiz kalmaz
 
 
 def test_busy_flag_is_set_before_the_job_thread_starts(srv, monkeypatch):

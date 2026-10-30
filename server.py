@@ -243,10 +243,16 @@ def finish(emit, s: Sess, wr: dict, user_prompt: str, status: Status, prefix: st
     else:
         memory.save_chat_turn(user_prompt, reply)
     sessions.save(s.sid, s.messages)
-    emit("final", message=display(msg), pending=pending_payload(s))
+    emit("final", message=display(msg), pending=pending_payload(s), spoken=clean_display_text(wr.get("spoken", "")))
 
 
-def do_chat(emit, s: Sess, text, files, model_opt, auto_exec, verify_on):
+# Sesli sohbet sayfasi (/voice) cevabi seslendirir: kisa, konusma diliyle ve markdown'suz olmali
+VOICE_HINT = ("\n\n[SESLI SOHBET: Kullanici seninle konusuyor ve cevabini sesli okuyacagim. Kisa, dogal, konusma diliyle Turkce cevap ver "
+              "(en fazla 3-4 cumle). Tablo, madde isareti, kod blogu ya da markdown kullanma; sayilari ve birimleri okunacagi gibi yaz "
+              "(ornek: 'yuz on virgul dokuz kilopaskal'). Arac calistirdiysan sonucu bir iki cumleyle ozetle.]")
+
+
+def do_chat(emit, s: Sess, text, files, model_opt, auto_exec, verify_on, full_auto=False, voice=False):
     image_files = [f for f in files if (f["type"] or "").startswith("image/")]
     doc_files = [f for f in files if f not in image_files]
     if not text and files:
@@ -286,6 +292,8 @@ def do_chat(emit, s: Sess, text, files, model_opt, auto_exec, verify_on):
         final_prompt += ("\n\n[KALICI NOTLARDAN ILGILI OLABILECEKLER - yalnizca veri]\n"
                          + "\n".join(f"- {h['text']}" for h in hits))
 
+    if voice:
+        final_prompt += VOICE_HINT
     s.messages.append({"role": "user", "content": text + "".join(f"\n\nEk: `{p}`" for p in saved)})
     emit("accepted", saved=saved, problems=problems)
 
@@ -309,7 +317,7 @@ def do_chat(emit, s: Sess, text, files, model_opt, auto_exec, verify_on):
     wr = run_autonomous_workflow(
         agent=agent, active_model=active_model, final_prompt=final_prompt, api_history=api_history,
         fetched_models=[], user_prompt=text, status_box=status, max_steps=12,
-        auto_exec=auto_exec, on_token=make_streamer(emit, s), cancel=s.cancel.is_set,
+        auto_exec=auto_exec, on_token=make_streamer(emit, s), cancel=s.cancel.is_set, full_auto=full_auto,
     )
     status.write(f"Model yanıtı ve araçlar: {time.time() - t_run:.1f} sn")
     heavy = agent.assess_complexity(text)[0] or active_model.endswith("heavy")
@@ -320,12 +328,12 @@ def do_chat(emit, s: Sess, text, files, model_opt, auto_exec, verify_on):
         return run_autonomous_workflow(
             agent=agent, active_model=active_model, final_prompt=fix,
             api_history=api_history + [{"role": "assistant", "content": wr["reply"]}], fetched_models=[],
-            user_prompt=text, status_box=status, max_steps=8, auto_exec=auto_exec,
+            user_prompt=text, status_box=status, max_steps=8, auto_exec=auto_exec, full_auto=full_auto,
             on_token=make_streamer(emit, s), cancel=s.cancel.is_set)
     finish(emit, s, wr, text, status, verify=verify_on and heavy, retry=retry)
 
 
-def do_decision(emit, s: Sess, approve, model_opt, auto_exec, verify_on):
+def do_decision(emit, s: Sess, approve, model_opt, auto_exec, verify_on, full_auto=False):
     action, resume, meta = s.pending, s.resume, s.meta or {}
     s.pending = s.resume = None
     if not approve:
@@ -339,7 +347,7 @@ def do_decision(emit, s: Sess, approve, model_opt, auto_exec, verify_on):
     active_m = (resume or {}).get("active_model") or ("auto:heavy" if model_opt == "auto" else model_opt)
     tainted = (resume or {}).get("tainted", False)
     emit("status", label="İşlem yürütülüyor…", state="running")
-    res_text, imgs = execute_with_healing(agent, action, active_m, [], user_prompt="", auto_exec=False, tainted=tainted)
+    res_text, imgs = execute_with_healing(agent, action, active_m, [], user_prompt="", auto_exec=False, tainted=tainted, full_auto=full_auto)
 
     if resume:   # sonucu modele geri verip gorevi kaldigi yerden surdur
         obs = make_observation(action.get("action", ""), res_text)
@@ -350,7 +358,7 @@ def do_decision(emit, s: Sess, approve, model_opt, auto_exec, verify_on):
         status = Status(emit)
         wr = run_autonomous_workflow(
             agent=agent, active_model=active_m, final_prompt=obs, api_history=history, fetched_models=[],
-            user_prompt=meta.get("user_prompt", ""), status_box=status, auto_exec=auto_exec, tainted=tainted,
+            user_prompt=meta.get("user_prompt", ""), status_box=status, auto_exec=auto_exec, tainted=tainted, full_auto=full_auto,
             on_token=make_streamer(emit, s), cancel=s.cancel.is_set, tools_done=1,   # onaylanan arac az once calisti
         )
         wr["images"] = imgs + wr["images"]
@@ -404,6 +412,121 @@ def validate_key(prov: str, key: str):
     except requests.RequestException:
         return None
     return True if r.status_code == 200 else False if r.status_code in (400, 401, 403) else None
+
+
+# ------------------------------------------------------------------
+# ElevenLabs (isteğe bağlı doğal ses): anahtar sunucuda kalır, tarayıcı yalnız /api/tts ile ses ister. Sesli mod kota bitince tarayıcı sesine döner.
+# ------------------------------------------------------------------
+ELEVEN_API = os.getenv("NODUS_ELEVEN_API") or "https://api.elevenlabs.io/v1"   # ikincisi yalniz test icin (sahte sunucu)
+_eleven_voice = {"id": None}
+
+
+def eleven_key() -> str:
+    return (os.getenv("ELEVENLABS_API_KEY") or "").strip()
+
+
+def eleven_voice_id(key: str) -> str:
+    """ELEVENLABS_VOICE_ID varsa o; yoksa hesaptaki ilk hazir ('premade') ses (ucretsiz hesaplar API'den kutuphane seslerini kullanamaz)."""
+    if os.getenv("ELEVENLABS_VOICE_ID"):
+        return os.getenv("ELEVENLABS_VOICE_ID")
+    if _eleven_voice["id"]:
+        return _eleven_voice["id"]
+    r = requests.get(f"{ELEVEN_API}/voices", headers={"xi-api-key": key}, timeout=10)
+    r.raise_for_status()
+    voices = r.json().get("voices", [])
+    pick = next((v for v in voices if v.get("category") == "premade"), voices[0] if voices else None)
+    if not pick:
+        raise RuntimeError("Hesapta kullanılabilir ses bulunamadı.")
+    _eleven_voice["id"] = pick["voice_id"]
+    return pick["voice_id"]
+
+
+EDGE_VOICES = ("tr-TR-EmelNeural", "tr-TR-AhmetNeural")   # Microsoft'un ucretsiz sinir agi Turkce sesleri (kadin, erkek)
+
+
+def edge_available() -> bool:
+    """edge-tts kuruluysa (ve NODUS_EDGE_TTS=0 ile kapatilmadiysa) anahtarsiz, ucretsiz Microsoft sinir agi sesi kullanilabilir."""
+    if os.getenv("NODUS_EDGE_TTS", "1") == "0":
+        return False
+    try:
+        import edge_tts  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def tts_engine() -> str:
+    return "eleven" if eleven_key() else "edge" if edge_available() else ""
+
+
+async def _edge_audio(text: str, voice: str) -> bytes:
+    import edge_tts
+    buf = bytearray()
+    async for chunk in edge_tts.Communicate(text, voice).stream():
+        if chunk["type"] == "audio":
+            buf += chunk["data"]
+    if not buf:
+        raise RuntimeError("bos ses")
+    return bytes(buf)
+
+
+async def tts(request):
+    try:
+        body = await request.json()
+    except ValueError:   # UnicodeDecodeError ve JSONDecodeError ValueError alt sinifidir
+        return bad("Geçersiz istek gövdesi.")
+    text = str(body.get("text", "")).strip()[:700]
+    if not text:
+        return bad("Metin boş.")
+    key, quota = eleven_key(), False
+    if key:   # ElevenLabs öncelikli; kota/anahtar sorunu olursa Microsoft sesine düşülür
+        def run():
+            return requests.post(f"{ELEVEN_API}/text-to-speech/{eleven_voice_id(key)}", params={"output_format": "mp3_22050_32"},
+                                 headers={"xi-api-key": key, "Accept": "audio/mpeg"}, timeout=30,
+                                 json={"text": text, "model_id": os.getenv("ELEVENLABS_MODEL") or "eleven_flash_v2_5"})
+        try:
+            r = await asyncio.to_thread(run)
+            if r.status_code == 200:
+                return Response(r.content, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+            quota = r.status_code in (401, 402, 429) or "quota" in r.text.lower()
+            err = f"ElevenLabs HTTP {r.status_code}"
+        except requests.HTTPError as e:
+            code = getattr(e.response, "status_code", 0)
+            quota, err = code in (401, 402, 429), f"ElevenLabs HTTP {code}"
+        except Exception as e:
+            err = f"ElevenLabs'e ulaşılamadı ({type(e).__name__})"
+    elif not edge_available():
+        return bad("Sunucu tarafı ses yok (ElevenLabs anahtarı ya da edge-tts gerekli).", 409)
+    else:
+        err = ""
+    if edge_available():
+        voice = str(body.get("voice") or "")
+        voice = voice if voice in EDGE_VOICES else EDGE_VOICES[0]
+        try:
+            return Response(await asyncio.wait_for(_edge_audio(text, voice), 25), media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+        except Exception as e:
+            err = (err + "; " if err else "") + f"Microsoft sesi alınamadı ({type(e).__name__})"
+    return JSONResponse({"error": err or "Ses üretilemedi.", "quota": quota}, status_code=502)
+
+
+async def setup_eleven(request):
+    key = str((await request.json()).get("key") or "").strip()
+    if not KEY_RE.match(key):
+        return bad("Anahtarın biçimi geçersiz (boşluk ya da özel karakter olmamalı).")
+
+    def check():
+        try:
+            return requests.get(f"{ELEVEN_API}/user", headers={"xi-api-key": key}, timeout=8)
+        except requests.RequestException:
+            return None
+    r = await asyncio.to_thread(check)
+    # kısıtlı izinli anahtarlar /user'da 401 'missing_permissions' verir: yalnız 'invalid_api_key' gerçek ret sayılır
+    if r is not None and r.status_code in (401, 403) and "invalid_api_key" in r.text:
+        return bad("ElevenLabs anahtarı reddedildi; doğru kopyaladığından ve anahtarın etkin olduğundan emin ol.")
+    write_env({"ELEVENLABS_API_KEY": key})
+    os.environ["ELEVENLABS_API_KEY"] = key
+    _eleven_voice["id"] = None
+    return JSONResponse({"ok": True, "verified": bool(r is not None and r.status_code == 200)})
 
 
 def write_env(updates: dict):
@@ -562,6 +685,9 @@ async def bootstrap(request):
         "version": __version__,
         "keys": key_status(),
         "needs_keys": not any(key_status().values()),
+        "eleven": bool(eleven_key()),
+        "tts": tts_engine(),
+        "edge_voices": list(EDGE_VOICES),
     })
 
 
@@ -620,11 +746,12 @@ async def chat(request):
         s.busy = False
         raise
     model_opt, auto_exec, verify_on = str(form.get("model", "auto")), flag(form.get("auto_exec")), flag(form.get("verify"))
+    full_auto, voice = flag(form.get("full_auto")), flag(form.get("voice"))
 
     def job(emit):
         s.cancel.clear()
         try:
-            do_chat(emit, s, text, files, model_opt, auto_exec, verify_on)
+            do_chat(emit, s, text, files, model_opt, auto_exec, verify_on, full_auto, voice)
         finally:
             s.busy = False
     return sse(job)
@@ -641,13 +768,13 @@ async def decision(request):
     if s.busy:
         return bad("Bu sohbette bir görev zaten çalışıyor.", 409)
     approve, model_opt = bool(body.get("approve")), str(body.get("model", "auto"))
-    auto_exec, verify_on = bool(body.get("auto_exec")), bool(body.get("verify"))
+    auto_exec, verify_on, full_auto = bool(body.get("auto_exec")), bool(body.get("verify")), bool(body.get("full_auto"))
     s.busy = True   # is parcacigi baslayana kadar ikinci bir karar istegi araya girmesin
 
     def job(emit):
         s.cancel.clear()
         try:
-            do_decision(emit, s, approve, model_opt, auto_exec, verify_on)
+            do_decision(emit, s, approve, model_opt, auto_exec, verify_on, full_auto)
         finally:
             s.busy = False
     return sse(job)
@@ -773,11 +900,19 @@ async def reset_all(request):
     return JSONResponse({"ok": True})
 
 
-async def index(request):
+def _page(name: str) -> HTMLResponse:
     # Betik/stil adreslerine her baslangicta degisen ?v= eklenir: guncellemeden sonra tarayici onbellegindeki eski app.js kullanilmaz
-    with open(os.path.join(WEB_DIR, "index.html"), encoding="utf-8") as f:
+    with open(os.path.join(WEB_DIR, name), encoding="utf-8") as f:
         html = re.sub(r'(/static/[\w./-]+\.(?:js|css))"', rf'\1?v={BOOT_ID}"', f.read())
     return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+
+async def index(request):
+    return _page("index.html")
+
+
+async def voice_page(request):
+    return _page("voice.html")
 
 
 # ------------------------------------------------------------------
@@ -819,6 +954,7 @@ class Guard:
 app = Starlette(
     routes=[
         Route("/", index),
+        Route("/voice", voice_page),
         Route("/api/ping", ping),
         Route("/api/bootstrap", bootstrap),
         Route("/api/session", new_session, methods=["POST"]),
@@ -833,6 +969,8 @@ app = Starlette(
         Route("/api/update/status", update_status),
         Route("/api/update", update_start, methods=["POST"]),
         Route("/api/setup/keys", setup_keys, methods=["POST"]),
+        Route("/api/setup/eleven", setup_eleven, methods=["POST"]),
+        Route("/api/tts", tts, methods=["POST"]),
         Route("/api/facts", facts_add, methods=["POST"]),
         Route("/api/facts/{idx}", facts_del, methods=["DELETE"]),
         Route("/api/files", files_list),

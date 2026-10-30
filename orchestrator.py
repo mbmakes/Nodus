@@ -119,10 +119,23 @@ def make_observation(action_name: str, result_text: str) -> str:
     )
 
 
-def is_safe_action(action_info: dict, auto_exec: bool = False, tainted: bool = False) -> tuple:
+def is_safe_action(action_info: dict, auto_exec: bool = False, tainted: bool = False, full_auto: bool = False) -> tuple:
     """(izin_var, neden). Kod calistirma, kullanici 'otomatik' demedikce veya oturumda internetten
-    icerik okunmussa (prompt injection riski) onay ister."""
+    icerik okunmussa (prompt injection riski) onay ister.
+    full_auto (sesli modun 'onaysiz' secenegi): bilinen her eylem sormadan calisir. Tek istisna: internetten icerik okunduktan
+    sonra geri donussuz isler (silme, kalici kod ekleme, calisma alani disina yazma) yine sorulur; 'deny' kurallari tool icinde zaten gecerli."""
     action = action_info.get("action", "")
+    if full_auto and action in KNOWN_ACTIONS:
+        if tainted and action in ("delete_file", "self_improve"):
+            return False, ALWAYS_ASK[action] + " (Bu oturumda internetten icerik okundu; onaysiz modda bile sorulur.)"
+        if tainted and action in FILE_WRITE:
+            params = action_info.get("params") or {}
+            for k in FILE_PATH_KEYS:
+                if params.get(k):
+                    level, why = tools.path_risk(str(params[k]), write=True, tainted=True)
+                    if level == "ask":
+                        return False, why
+        return True, ""
 
     if action in FILE_TOOLS:
         params = action_info.get("params") or {}
@@ -164,7 +177,7 @@ def is_safe_action(action_info: dict, auto_exec: bool = False, tainted: bool = F
 
 def execute_with_healing(agent, action_info: dict, active_model: str, fetched_models: list,
                          user_prompt: str = "", status_box=None,
-                         auto_exec: bool = False, tainted: bool = False, cancel=None) -> tuple:
+                         auto_exec: bool = False, tainted: bool = False, cancel=None, full_auto: bool = False) -> tuple:
     """Eylemi calistirir; kod hatasinda modelin onerdigi duzeltmeyi (GUVENLIK POLITIKASINDAN GECERSE) dener."""
     exec_start_time = time.time()
     action_type = action_info.get("action", "")
@@ -189,7 +202,7 @@ def execute_with_healing(agent, action_info: dict, active_model: str, fetched_mo
         heal_action = agent.parse_action(heal_resp)
 
         if heal_action and heal_action.get("action") in ("execute_code", "execute_python_code"):
-            allowed, why = is_safe_action(heal_action, auto_exec, tainted)
+            allowed, why = is_safe_action(heal_action, auto_exec, tainted, full_auto)
             if not allowed:  # onarim kodu onaylanmadigi icin calistirilmaz
                 repair_logs.append(f"**Uyarı:** Onarım kodu onay gerektirdiği için çalıştırılmadı ({why})")
                 break
@@ -252,7 +265,8 @@ def execute_with_healing(agent, action_info: dict, active_model: str, fetched_mo
 
 def run_autonomous_workflow(agent, active_model: str, final_prompt: str, api_history: list, fetched_models: list,
                             user_prompt: str, status_box=None, max_steps: int = 12,
-                            auto_exec: bool = False, tainted: bool = False, on_token=None, cancel=None, tools_done: int = 0) -> dict:
+                            auto_exec: bool = False, tainted: bool = False, on_token=None, cancel=None, tools_done: int = 0,
+                            full_auto: bool = False) -> dict:
     """Nodus'un kullanici araya girmeden gorevi bastan sona bitirmesini saglayan ReAct dongusu.
     Onay gerektiren bir eylemde durur ve 'resume' ile devam ettirilebilir durum dondurur."""
     step = 0
@@ -263,8 +277,9 @@ def run_autonomous_workflow(agent, active_model: str, final_prompt: str, api_his
     seen_actions = {}
     tools_run, nudged = tools_done, False   # tools_done: onay sonrasi devamda arac dongu disinda zaten calismis demektir
 
-    def result(reply, pending=None, resume=None):
-        return {"reply": reply, "images": all_generated_images, "pending_action": pending, "resume": resume}
+    def result(reply, pending=None, resume=None, spoken=""):
+        # spoken: modelin SON cevabi (arac ciktilari/tablolar olmadan); sesli mod bunu okur
+        return {"reply": reply, "images": all_generated_images, "pending_action": pending, "resume": resume, "spoken": spoken}
 
     def stopped():
         collected_explanations.append("*Görev kullanıcı tarafından durduruldu.*")
@@ -303,7 +318,7 @@ def run_autonomous_workflow(agent, active_model: str, final_prompt: str, api_his
                 continue
             if status_box:
                 status_box.update(label="Yanıt hazır", state="complete", expanded=False)
-            return result(user_explanation or response)
+            return result(user_explanation or response, spoken=user_explanation or response)
 
         action_name = action.get("action", "")
         if status_box:
@@ -324,7 +339,7 @@ def run_autonomous_workflow(agent, active_model: str, final_prompt: str, api_his
             current_turn_prompt = obs
             continue
 
-        allowed, reason = is_safe_action(action, auto_exec, tainted)
+        allowed, reason = is_safe_action(action, auto_exec, tainted, full_auto)
         if not allowed:
             history_chain.pop()  # onaylanirsa app eklenecek; reddedilirse yanit yok sayilir
             if status_box:
@@ -338,7 +353,7 @@ def run_autonomous_workflow(agent, active_model: str, final_prompt: str, api_his
 
         action_res_text, imgs = execute_with_healing(
             agent, action, active_model, fetched_models, user_prompt=user_prompt,
-            status_box=status_box, auto_exec=auto_exec, tainted=tainted, cancel=cancel
+            status_box=status_box, auto_exec=auto_exec, tainted=tainted, cancel=cancel, full_auto=full_auto
         )
         tools_run += 1
         if action_name in TAINTING:

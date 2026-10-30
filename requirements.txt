@@ -22,3 +22,4 @@ fpdf2
 playwright
 pytest
 pillow
+edge-tts

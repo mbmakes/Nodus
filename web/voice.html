@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="tr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nodus · Sesli mod</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/fonts.css">
+<link rel="stylesheet" href="/static/voice.css">
+</head>
+<body data-state="idle" data-mode="none">
+<canvas id="orb" aria-hidden="true"></canvas>
+<div class="scan" aria-hidden="true"></div>
+
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 28 28" aria-hidden="true"><path d="M6 22V6l16 16V6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/><circle cx="6" cy="22" r="3.2" fill="currentColor"/><circle cx="6" cy="6" r="3.2" fill="currentColor"/><circle cx="22" cy="22" r="3.2" fill="currentColor"/><circle cx="22" cy="6" r="3.6" fill="var(--hot)"/></svg>
+    <b>NODUS</b><span>// SESLİ MOD</span>
+  </div>
+  <div class="chips">
+    <span class="chip" id="chip-mode">MOD —</span>
+    <span class="chip" id="chip-mic">MİKROFON —</span>
+    <span class="chip" id="clock">--:--:--</span>
+  </div>
+</header>
+
+<aside class="panel left" aria-label="Sistem durumu">
+  <h2>SİSTEM</h2>
+  <dl id="sys"></dl>
+  <h2>SAĞLAYICILAR</h2>
+  <ul id="prov"></ul>
+</aside>
+
+<aside class="panel right" aria-label="Adımlar ve kayıt">
+  <h2>ADIMLAR</h2>
+  <ol id="steps"><li class="empty">Henüz iş yok</li></ol>
+  <h2>KAYIT</h2>
+  <div id="log"></div>
+</aside>
+
+<div class="state-label" id="state-label" aria-live="polite">HAZIR</div>
+
+<section class="dock">
+  <div class="caption" aria-live="polite">
+    <p id="cap-you"></p>
+    <p id="cap-bot"></p>
+  </div>
+  <div id="gate" class="gate" role="alertdialog" aria-labelledby="gate-title" hidden>
+    <h3 id="gate-title">ONAY GEREKİYOR</h3>
+    <p id="gate-why"></p>
+    <pre id="gate-detail"></pre>
+    <div class="row"><button class="btn hot" id="gate-yes" type="button">Onayla</button><button class="btn" id="gate-no" type="button">Reddet</button><span class="hint">ya da “evet” / “hayır” de</span></div>
+  </div>
+  <form id="text-form" autocomplete="off">
+    <input id="text-in" type="text" placeholder="Yazarak da söyleyebilirsin…" aria-label="Mesaj">
+    <button class="btn" type="submit">Gönder</button>
+  </form>
+  <div class="controls">
+    <button class="btn" id="btn-mic" type="button">Mikrofon: açık</button>
+    <button class="btn" id="btn-stop" type="button">Durdur</button>
+    <button class="btn" id="btn-mode" type="button">Mod değiştir</button>
+    <label class="voice" id="voice-wrap" hidden>Ses <select id="voice-sel" aria-label="Konuşma sesi"></select></label>
+    <a class="btn" href="/" target="_blank" rel="noopener">Normal arayüz ↗</a>
+  </div>
+</section>
+
+<div class="overlay" id="start" role="dialog" aria-labelledby="start-title">
+  <div class="card">
+    <svg class="mark" viewBox="0 0 28 28" aria-hidden="true"><path d="M6 22V6l16 16V6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/><circle cx="6" cy="22" r="3.2" fill="currentColor"/><circle cx="6" cy="6" r="3.2" fill="currentColor"/><circle cx="22" cy="22" r="3.2" fill="currentColor"/><circle cx="22" cy="6" r="3.6" fill="var(--hot)"/></svg>
+    <h1 id="start-title">Sesli mod</h1>
+    <p>Benimle konuşarak çalışabilirsin: söyle, ben yapayım ve cevabı sesli anlatayım. Mikrofon izni isteyeceğim.</p>
+    <p class="ask"><b>Başlamadan önce bir soru:</b> Yapacağım işler için sana onay sorayım mı, yoksa her şeyi sormadan yapayım mı?</p>
+    <div class="choices">
+      <button class="choice hot" id="pick-auto" type="button"><b>Onaysız çalış</b><small>Dosya, komut, uygulama… hepsini sormadan yaparım.</small></button>
+      <button class="choice" id="pick-ask" type="button"><b>Önce bana sor</b><small>Kritik işlemden önce “yapayım mı?” diye sorarım.</small></button>
+    </div>
+    <p class="warn" id="warn-auto">Onaysız modda web’den okuduğum bir içerik beni yanlış yönlendirirse engelleyemem. Yalnızca internetten içerik okuduktan sonra silme, kalıcı kod ekleme ve çalışma alanı dışına yazma işlerinde yine de sorarım. Sonradan “onay iste” diyerek modu değiştirebilirsin.</p>
+    <details class="eleven">
+      <summary>Daha da doğal ses (isteğe bağlı): ElevenLabs</summary>
+      <p>Varsayılan sesin yetmezse ElevenLabs’in sesini kullanabilirim. Ücretsiz hesapta ayda yaklaşık 10 dakikalık ses (10.000 kredi) var; kota bitince kendiliğinden tarayıcı sesine dönerim. Ücretsiz kullanım ticari olmayan işler içindir ve ElevenLabs’e atıf ister. <b>Açarsan okuyacağım cümlelerin metni ElevenLabs’e gönderilir.</b></p>
+      <div class="row">
+        <a class="btn" href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener noreferrer">Anahtar sayfasını aç ↗</a>
+        <input id="eleven-key" type="password" autocomplete="off" spellcheck="false" placeholder="anahtarı buraya yapıştır" aria-label="ElevenLabs anahtarı">
+        <button class="btn" id="eleven-save" type="button">Kaydet</button>
+      </div>
+      <p class="note" id="eleven-msg" aria-live="polite"></p>
+    </details>
+    <p class="warn">Sesim varsayılan olarak Microsoft’un ücretsiz sinir ağı servisinden gelir (anahtar gerekmez); okuyacağım cümlelerin metni Microsoft’a gider. İstemezsen <code>NODUS_EDGE_TTS=0</code> yaz, cihazının kendi sesini kullanırım.</p>
+    <p class="warn">Dinleme tarayıcının kendi konuşma tanımasıyla yapılır: Chrome’da sesin yazıya çevrilmek üzere Google’a, Edge’de Microsoft’a gider (Nodus’tan ayrı olarak). Hassas bir şey konuşacaksan yazarak devam et.</p>
+    <p class="warn" id="warn-sr" hidden>Bu tarayıcı konuşma tanımayı desteklemiyor. Sesli komut için Chrome ya da Edge kullan; burada yazarak devam edebilirsin.</p>
+  </div>
+</div>
+
+<script src="/static/voice.js"></script>
+</body>
+</html>

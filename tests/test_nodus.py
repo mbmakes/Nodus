@@ -754,6 +754,23 @@ def test_fetch_url_decodes_turkish_page_without_charset_header(monkeypatch):
     assert tools._decode_body("Merhaba ş".encode("utf-8")[:-1], None) == "Merhaba "   # 1 MB'ta kesilen harf cp1254 bozuntusuna dusmez
 
 
+def test_full_auto_never_asks_except_irreversible_work_after_web_content():
+    home_file = os.path.join(os.path.expanduser("~"), "nodus_test_yok_dosya.txt")
+    risky = [{"action": "run_shell", "params": {"command": "x"}}, {"action": "delete_file", "params": {"filename": "a.txt"}},
+             {"action": "open_app", "params": {"target": "notepad"}}, {"action": "self_improve", "params": {}},
+             {"action": "execute_code", "params": {"code": "1"}}, {"action": "read_file", "params": {"filename": os.path.join(os.path.expanduser("~"), ".ssh", "id_rsa")}}]
+    for a in risky:
+        assert not is_safe_action(a)[0] or a["action"] == "read_file", a        # normalde sorar
+        assert is_safe_action(a, full_auto=True)[0], a                          # onaysiz modda sormaz
+        assert is_safe_action(a, tainted=True, full_auto=True)[0] or a["action"] in ("delete_file", "self_improve"), a
+    # internetten icerik okunduktan sonra geri donussuz isler yine sorulur
+    assert not is_safe_action({"action": "delete_file", "params": {"filename": "a.txt"}}, tainted=True, full_auto=True)[0]
+    assert not is_safe_action({"action": "self_improve", "params": {}}, tainted=True, full_auto=True)[0]
+    assert not is_safe_action({"action": "write_file", "params": {"filename": home_file, "content": "x"}}, tainted=True, full_auto=True)[0]
+    assert is_safe_action({"action": "write_file", "params": {"filename": "a.txt", "content": "x"}}, tainted=True, full_auto=True)[0]   # calisma alani
+    assert not is_safe_action({"action": "bilinmeyen_arac"}, full_auto=True)[0]                                                         # tanimsiz eylem hep reddedilir
+
+
 def test_local_ollama_provider_is_opt_in(monkeypatch):
     from providers import Router
     monkeypatch.delenv("NODUS_OLLAMA", raising=False)
