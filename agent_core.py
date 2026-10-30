@@ -363,7 +363,7 @@ EYLEM_DETAYI:
 
         router = get_router()
         if not router.available():
-            return "Hicbir model saglayicisi tanimli degil. .env dosyasina GEMINI_API_KEY veya OPENROUTER_API_KEY ekleyin."
+            return "Yapay zeka anahtari tanimli degil. Arayuzde Ayarlar > 'Anahtar ekle / degistir' bolumunden ucretsiz bir anahtar ekleyin (ya da .env dosyasina GEMINI_API_KEY yazin)."
 
         text, used, errors = router.chat(messages, kind=router.kind_of(model_name), preferred=model_name, stream_cb=on_token)
         if text:

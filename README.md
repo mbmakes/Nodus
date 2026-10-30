@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Windows | macOS | Linux">
 </p>
 
-> **Status: v1.11-beta.** Close to daily use, but not widely tested yet. See [Limits](#limits-and-beta-notes) for what to keep in mind.
+> **Status: v1.12-beta.** Close to daily use, but not widely tested yet. See [Limits](#limits-and-beta-notes) for what to keep in mind.
 > The interface and the agent's default replies are in **Turkish** for now; an English interface is on the [roadmap](#roadmap). The agent understands English tasks.
 
 ![Calculation sheet: step log, equations and tables](docs/img/hesap-foyu.png)
@@ -172,7 +172,7 @@ Found a vulnerability? Please follow [SECURITY.md](SECURITY.md).
 ## Tests
 
 ```bash
-python -m pytest tests -q -p no:cacheprovider      # 107 tests
+python -m pytest tests -q -p no:cacheprovider      # 108 tests
 ```
 
 They cover agent and tool behaviour, the security policy, the server endpoints (a real uvicorn with a fake model), stopping and process killing, reports, search and calculation accuracy against hand calculations. GitHub Actions runs them on Windows, macOS and Linux on every push, together with the launcher and installer smoke tests.

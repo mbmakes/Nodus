@@ -456,8 +456,18 @@ kbd {
 .key-main input { flex: 1; min-width: 0; }
 .key-detect { display: block; min-height: 1.3em; margin-top: 6px; font: 500 13px var(--font-cond); color: var(--mute); }
 .key-detect.ok { color: var(--accent); }
-.key-more summary { cursor: pointer; font: 600 13.5px var(--font-cond); color: var(--mute); margin-bottom: 12px; }
-.key-more[open] { display: grid; gap: 12px; }
+.key-welcome { margin: 14px 0 6px; padding: 14px 16px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); border-radius: 0 8px 8px 0; font-size: 14.5px; }
+.key-welcome p { margin: 0 0 8px; }
+.key-welcome p:last-child { margin: 0; }
+.key-more { margin-top: 10px; padding-top: 16px; border-top: 1px solid var(--rule); }
+.key-more h3 { margin: 0 0 6px; font: 600 17px var(--font-cond); }
+.key-more > p { margin: 0 0 14px; font-size: 14px; color: var(--mute); }
+.key-cards { display: grid; gap: 12px; }
+.key-card { padding: 12px 14px; border: 1px solid var(--rule2); border-radius: 10px; background: color-mix(in srgb, var(--ink) 2.5%, transparent); }
+.key-card-head { display: flex; align-items: baseline; gap: 10px; font: 600 15px var(--font-cond); }
+.key-card-hint { margin: 4px 0 10px; font-size: 13.5px; color: var(--mute); }
+.key-card .key-main { margin-top: 0; align-items: center; }
+.key-card .key-main a.btn { white-space: nowrap; text-decoration: none; }
 
 .lightbox { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; padding: 24px; margin: 0; border: 0; background: transparent; display: none; place-items: center; }
 .lightbox[open] { display: grid; }

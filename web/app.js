@@ -407,6 +407,7 @@ async function sendText(text) {
   const files = S.attach.slice();
   text = (text || '').trim();
   if ((!text && !files.length) || S.busy || S.pending) return;
+  if (S.needsKeys) { toast('Önce yapay zekâ anahtarını eklemen gerekiyor; adımlar ekranda.'); return showSetup(); }   // anahtarsiz gonderim teknik hata yerine kurulum ekranini acar
   S.msgs.push({ role: 'user', content: text || 'Yüklenen dosyaları analiz et.', files: files.map((f) => f.name) });
   S.attach = []; $('#prompt').value = ''; autosize();
   startRun(); renderAll();
@@ -656,15 +657,27 @@ const setup = { busy: false, error: '', text: '', vals: {} };
 const KEY_HINTS = [[/^AIza[\w-]{30,}$/, 'gemini'], [/^gsk_\w{20,}$/, 'groq'], [/^sk-or-[\w-]{20,}$/, 'openrouter'], [/^csk-\w{20,}$/, 'cerebras'], [/^[A-Za-z0-9]{32}$/, 'mistral']];
 const detectProvider = (k) => { const hit = KEY_HINTS.find(([re]) => re.test(k)); return hit ? hit[1] : null; };
 const providerName = (k) => (KEY_PROVIDERS.find(([id]) => id === k) || [, k])[1];
+// Gemini dışındaki sağlayıcılar: her biri için "anahtar sayfasını aç" bağlantısı ve tek cümlelik yönerge
+const PROVIDER_INFO = {
+  groq: { url: 'https://console.groq.com/keys', hint: 'Çok hızlı cevap verir; sesli komut kullanmak istiyorsan bu gerekli. Giriş yap, “Create API Key” de.' },
+  openrouter: { url: 'https://openrouter.ai/keys', hint: 'Bir sürü ücretsiz modelden oluşan yedek havuz. Giriş yap, “Create Key” de.' },
+  cerebras: { url: 'https://cloud.cerebras.ai', hint: 'Çok hızlı cevap verir. Giriş yaptıktan sonra “API Keys” bölümünden yeni anahtar oluştur.' },
+  mistral: { url: 'https://console.mistral.ai/api-keys', hint: 'Ek yedek havuz. Giriş yap, “Create new key” de.' },
+};
 
 function paintSetup() {
   const body = $('#setup-body');
   const inputs = {};
-  const row = (k, name, hint) => {
+  const card = (k) => {
+    const info = PROVIDER_INFO[k], name = providerName(k);
     inputs[k] = el('input', { type: 'password', autocomplete: 'off', spellcheck: 'false', 'aria-label': name + ' anahtarı',
-      placeholder: S.keys[k] ? 'kayıtlı; değiştirmek için yeni anahtarı yapıştır' : 'anahtarı buraya yapıştır', disabled: setup.busy,
+      placeholder: S.keys[k] ? 'kayıtlı; değiştirmek için yenisini yapıştır' : 'anahtarı buraya yapıştır', disabled: setup.busy,
       value: setup.vals[k] || '', oninput: (e) => { setup.vals[k] = e.target.value; } });   // hata sonrasi yeniden cizimde yazilan silinmesin
-    return el('label', {}, el('span', {}, name, S.keys[k] ? el('span', { class: 'key-ok', text: '  ✓ kayıtlı' }) : null), inputs[k], el('small', { text: hint }));
+    return el('div', { class: 'key-card' },
+      el('div', { class: 'key-card-head' }, el('b', { text: name }), S.keys[k] ? el('span', { class: 'key-ok', text: '✓ kayıtlı' }) : null),
+      el('p', { class: 'key-card-hint', text: info.hint }),
+      el('div', { class: 'key-main' },
+        el('a', { class: 'btn btn-sm', href: info.url, target: '_blank', rel: 'noopener noreferrer', text: 'Anahtar sayfasını aç ↗' }), inputs[k]));
   };
   const submit = async (e) => {
     e.preventDefault();
@@ -673,7 +686,7 @@ function paintSetup() {
     const pasted = inputs.main.value.trim();
     if (pasted) {
       const prov = detectProvider(pasted);
-      if (!prov) { setup.error = 'Bu anahtarı tanıyamadım. Gemini anahtarları “AIza” ile başlar; kopyalarken baştan ya da sondan karakter kaçmış olabilir. Başka bir sağlayıcınınsa aşağıdaki “Başka sağlayıcılar” bölümünü kullan.'; return paintSetup(); }
+      if (!prov) { setup.error = 'Bu anahtarı tanıyamadım. Gemini anahtarları “AIza” ile başlar; kopyalarken baştan ya da sondan karakter kaçmış olabilir. Başka bir sağlayıcınınsa anahtarı aşağıdaki kartlardan ona ait olana yapıştır.'; return paintSetup(); }
       payload[prov] = pasted;
     }
     if (!Object.keys(payload).length) { setup.error = 'Önce anahtarı yapıştır.'; return paintSetup(); }
@@ -709,24 +722,30 @@ function paintSetup() {
       inputs.main.value = t; setup.vals.main = t; detect(t);
     } catch { setup.error = 'Panoya erişemedim; anahtarı kutuya Ctrl+V ile yapıştır.'; paintSetup(); }
   } });
+  const first = S.needsKeys;   // hiç anahtar yoksa: ilk kurulum, sade bir karşılama metni göster
+  $('#setup-h').textContent = first ? 'Nodus’a hoş geldin' : 'Anahtar ekle / değiştir';
   body.replaceChildren(
-    el('p', { class: 'key-intro' }, 'Nodus yapay zekayı Google’ın ', el('b', { text: 'ücretsiz' }), ' Gemini hizmetiyle çalıştırır. Bunun için kendi hesabından bir “anahtar” (uzun bir şifre) almak gerekir. ',
-      el('b', { text: 'Kredi kartı istemez, yaklaşık 1 dakika sürer.' }), ' Anahtar yalnızca bu bilgisayarda saklanır.'),
+    first
+      ? el('div', { class: 'key-welcome' },
+          el('p', {}, el('b', { text: 'Başlamadan önce tek bir şey gerekiyor.' }), ' Nodus’un düşünebilmesi için internetteki bir yapay zekâ servisini kullanması lazım. O servis de bir “anahtar” ister.'),
+          el('p', { text: 'Anahtar, uzun harf ve rakamlardan oluşan bir şifre gibidir; servise kayıt olunca sana verilir. Ücretsizdir, kredi kartı istemez ve yalnızca bu bilgisayarda saklanır. İstediğin zaman Ayarlar → Anahtar ekle / değiştir’den yenisini girebilirsin.' }),
+          el('p', {}, el('b', { text: 'Aşağıdaki 3 adımı izle; yaklaşık 1 dakika sürer.' })))
+      : el('p', { class: 'key-intro' }, 'Nodus yapay zekayı Google’ın ', el('b', { text: 'ücretsiz' }), ' Gemini hizmetiyle çalıştırır. Bunun için kendi hesabından bir “anahtar” (uzun bir şifre) almak gerekir. ',
+          el('b', { text: 'Kredi kartı istemez, yaklaşık 1 dakika sürer.' }), ' Anahtar yalnızca bu bilgisayarda saklanır.'),
     el('form', { class: 'key-form', onsubmit: submit },
       el('ol', { class: 'key-steps' },
-        el('li', {}, 'Google hesabınla giriş yap. ', el('a', { class: 'btn btn-sm', href: 'https://aistudio.google.com/apikey', target: '_blank', rel: 'noopener noreferrer', text: 'Anahtar sayfasını aç ↗' })),
+        el('li', {}, 'Google hesabınla giriş yap (Gmail adresin yeterli). ', el('a', { class: 'btn btn-sm', href: 'https://aistudio.google.com/apikey', target: '_blank', rel: 'noopener noreferrer', text: 'Anahtar sayfasını aç ↗' })),
         el('li', { text: '“Create API key” (Anahtar oluştur) düğmesine bas; çıkan uzun metni kopyala (yanındaki kopyala simgesi işini görür).' }),
         el('li', {}, 'Buraya yapıştır:', el('div', { class: 'key-main' }, inputs.main, pasteBtn), found)),
-      el('details', { class: 'key-more' }, el('summary', { text: 'Başka sağlayıcılar (isteğe bağlı: daha fazla ücretsiz kota)' }),
-        row('groq', 'Groq', 'Hızlı cevaplar ve sesli komut için. console.groq.com'),
-        row('openrouter', 'OpenRouter', 'Yedek model havuzu. openrouter.ai'),
-        row('cerebras', 'Cerebras', 'Çok hızlı cevaplar. cloud.cerebras.ai'),
-        row('mistral', 'Mistral', 'Ek yedek havuz. console.mistral.ai')),
+      el('section', { class: 'key-more' },
+        el('h3', { text: 'Daha fazla ücretsiz kota (isteğe bağlı)' }),
+        el('p', { text: 'Gemini tek başına yeterli. Ama her ücretsiz servisin günlük bir sınırı var: ne kadar çok servis eklersen sınır o kadar geniş olur ve biri dolunca Nodus kendiliğinden diğerine geçer. Hepsinde yöntem aynı: “Anahtar sayfasını aç”, giriş yap ya da kayıt ol, yeni anahtar oluştur, kopyala, buraya yapıştır.' }),
+        el('div', { class: 'key-cards' }, ['groq', 'openrouter', 'cerebras', 'mistral'].map(card))),
       ...(setup.error ? [el('p', { class: 'upd-err', role: 'alert', text: setup.error })] : []),
       ...(setup.busy ? [el('div', { class: 'status-line' }, el('i', { class: 'spin' }), setup.text)] : []),
       el('div', { class: 'row-btns' },
         el('button', { class: 'btn btn-ink', type: 'submit', disabled: setup.busy, text: 'Kaydet ve başlat' }),
-        el('button', { class: 'btn', type: 'button', disabled: setup.busy, text: 'Sonra', onclick: () => $('#setup').close() }))));
+        el('button', { class: 'btn', type: 'button', disabled: setup.busy, text: first ? 'Şimdi değil' : 'Vazgeç', onclick: () => $('#setup').close() }))));
 }
 
 function showSetup() { setup.busy = false; setup.error = ''; paintSetup(); if (!$('#setup').open) $('#setup').showModal(); }

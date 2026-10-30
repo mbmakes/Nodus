@@ -3,7 +3,9 @@
 import importlib
 import json
 import os
+import shutil
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -83,6 +85,14 @@ def test_chat_streams_and_persists(srv, monkeypatch):
     d = requests.get(base + f"/api/session/{sid}", headers=H).json()
     assert [m["role"] for m in d["messages"]] == ["user", "assistant"]
     assert any(s["id"] == sid for s in requests.get(base + "/api/bootstrap", headers=H).json()["sessions"])
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="Node.js yok")
+def test_frontend_scripts_have_valid_syntax():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for name in ("app.js", "theme.js", "dock-init.js"):   # sozdizimi hatasi bos ekran demek; eskiden hicbir test bunu gormuyordu
+        r = subprocess.run(["node", "--check", os.path.join(root, "web", name)], capture_output=True, text=True)
+        assert r.returncode == 0, f"{name}: {r.stderr[:400]}"
 
 
 def test_busy_flag_is_set_before_the_job_thread_starts(srv, monkeypatch):
