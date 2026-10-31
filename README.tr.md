@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Windows | macOS | Linux">
 </p>
 
-> **Sürüm: v1.13-beta.** Günlük kullanıma yakın ama henüz geniş çapta denenmedi. Bilinen sınırlar için [Sınırlar](#sınırlar-ve-beta-notları) bölümüne bak.
+> **Sürüm: v1.13.1-beta.** Günlük kullanıma yakın ama henüz geniş çapta denenmedi. Bilinen sınırlar için [Sınırlar](#sınırlar-ve-beta-notları) bölümüne bak.
 
 ![Hesap föyü: adım kaydı, denklem ve tablo](docs/img/hesap-foyu.png)
 
@@ -68,7 +68,7 @@ macOS'ta kurulum sonunda `~/Applications/Nodus.app` oluşur: Launchpad'den veya 
 irm https://raw.githubusercontent.com/mbmakes/Nodus/master/install.ps1 | iex
 ```
 
-Bu komut son sürümü `~/Nodus` klasörüne (Windows: `%USERPROFILE%\Nodus`) indirir; **Python 3.12 yoksa klasörün içine, yönetici izni istemeden kurar** (taşınabilir, [uv](https://github.com/astral-sh/uv) ile; indirilen dosyanın SHA-256 özeti doğrulanır), kütüphaneleri kurar ve Nodus'u açar. İlk açılışta bir **anahtar penceresi** gelir: ücretsiz [Gemini anahtarını](https://aistudio.google.com/apikey) yapıştırırsın, doğrulanır ve kaydedilir; `.env` dosyasını elle düzenlemen gerekmez. Sonraki açılışlar için klasördeki `run_nodus.bat` (Windows) ya da `bash run_nodus.sh` (macOS/Linux) yeter. Önce betiği okumak istersen: [`install.sh`](install.sh), [`install.ps1`](install.ps1).
+Bu komut son sürümü `~/Nodus` klasörüne (Windows: `%USERPROFILE%\Nodus`) indirir; **Python 3.12 yoksa klasörün içine, yönetici izni istemeden kurar** (taşınabilir, [uv](https://github.com/astral-sh/uv) ile; indirilen dosyanın SHA-256 özeti doğrulanır), kütüphaneleri kurar ve Nodus'u açar. İlk açılışta bir **anahtar penceresi** gelir: ücretsiz [Gemini anahtarını](https://aistudio.google.com/apikey) yapıştırırsın, doğrulanır ve kaydedilir; `.env` dosyasını elle düzenlemen gerekmez. Windows'ta masaüstüne bir **Nodus kısayolu** eklenir, sonraki açılışlar için ona çift tıklaman (ya da klasördeki `run_nodus.bat`) yeter; macOS/Linux'ta klasördeki `bash run_nodus.sh` yeter. Önce betiği okumak istersen: [`install.sh`](install.sh), [`install.ps1`](install.ps1).
 
 ### Ücretsiz anahtarını almak (yaklaşık 1 dakika)
 

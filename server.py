@@ -1045,6 +1045,24 @@ def _open_when_ready(url: str, port: int, timeout: float = 90.0):
     open_window(url)   # zaman asiminda da dene: kullanici en azindan hata sayfasini gorur
 
 
+def _ensure_desktop_shortcut():
+    """Windows: masaustunde Nodus kisayolu yoksa bir kez olusturur (eski surumden guncelleyenler de alsin).
+    Isaret dosyasi sayesinde kullanici kisayolu silerse tekrar olusturulmaz."""
+    marker = os.path.join(MEM_DIR, ".desktop_shortcut")
+    if os.name != "nt" or os.getenv("NODUS_NO_WINDOW") or os.path.exists(marker):
+        return
+    ps = ("$l=Join-Path ([Environment]::GetFolderPath('Desktop')) 'Nodus.lnk'; if(-not(Test-Path $l)){"
+          "$s=(New-Object -ComObject WScript.Shell).CreateShortcut($l);$s.TargetPath=$env:NODUS_BAT;"
+          "$s.WorkingDirectory=$env:NODUS_DIR;$s.WindowStyle=7;$s.Description='Nodus';$s.Save()}")
+    try:
+        subprocess.run(["powershell", "-NoProfile", "-Command", ps], timeout=20, check=True, capture_output=True,
+                       env=dict(os.environ, NODUS_BAT=os.path.join(BASE_DIR, "run_nodus.bat"), NODUS_DIR=BASE_DIR))
+        os.makedirs(MEM_DIR, exist_ok=True)
+        open(marker, "w").close()
+    except Exception:
+        pass   # kisayol sunucunun acilmasini asla engellemez; sonraki acilista yeniden denenir
+
+
 def main():
     import uvicorn
     port = int(os.getenv("NODUS_PORT", "8765"))
@@ -1064,6 +1082,7 @@ def main():
             return
         print(f"[UYARI] {port} portu baska bir program tarafindan kullaniliyor; {free} kullaniliyor.")
         port, url = free, f"http://127.0.0.1:{free}"
+    _ensure_desktop_shortcut()
     if not os.getenv("NODUS_NO_WINDOW"):
         threading.Thread(target=_open_when_ready, args=(url, port), daemon=True).start()
     print(f"Nodus hazır: {url}   (kapatmak için Ctrl+C)")

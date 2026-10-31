@@ -48,5 +48,19 @@ if (Test-Path (Join-Path $dest 'version.py')) {
     Write-Host "Kuruldu: $dest"
 }
 
+# Masaustu kisayolu (yoksa olusturur; basarisiz olursa kurulumu engellemez)
+try {
+    $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Nodus.lnk'
+    if (-not (Test-Path $lnk)) {
+        $sc = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+        $sc.TargetPath = Join-Path $dest 'run_nodus.bat'
+        $sc.WorkingDirectory = $dest
+        $sc.WindowStyle = 7
+        $sc.Description = 'Nodus'
+        $sc.Save()
+        Write-Host 'Masaustune Nodus kisayolu eklendi.'
+    }
+} catch { Write-Host "Kisayol olusturulamadi: $($_.Exception.Message)" }
+
 Set-Location $dest
 & cmd.exe /c ".\run_nodus.bat"

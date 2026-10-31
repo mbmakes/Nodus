@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Windows | macOS | Linux">
 </p>
 
-> **Status: v1.13-beta.** Close to daily use, but not widely tested yet. See [Limits](#limits-and-beta-notes) for what to keep in mind.
+> **Status: v1.13.1-beta.** Close to daily use, but not widely tested yet. See [Limits](#limits-and-beta-notes) for what to keep in mind.
 > The interface and the agent's default replies are in **Turkish** for now; an English interface is on the [roadmap](#roadmap). The agent understands English tasks.
 
 ![Calculation sheet: step log, equations and tables](docs/img/hesap-foyu.png)
@@ -69,7 +69,7 @@ On macOS this also creates `~/Applications/Nodus.app`: open it from Launchpad or
 irm https://raw.githubusercontent.com/mbmakes/Nodus/master/install.ps1 | iex
 ```
 
-The command downloads the latest release into `~/Nodus` (Windows: `%USERPROFILE%\Nodus`). **If Python 3.12 is missing, it installs a portable copy inside that folder, without admin rights** (via [uv](https://github.com/astral-sh/uv); the SHA-256 of the download is verified), installs the libraries and starts Nodus. On first launch a **key dialog** appears: paste a free [Gemini key](https://aistudio.google.com/apikey), it is validated and saved, so you never have to edit `.env` by hand. Next time, `run_nodus.bat` (Windows) or `bash run_nodus.sh` (macOS/Linux) in that folder is enough. If you prefer to read the scripts first: [`install.sh`](install.sh), [`install.ps1`](install.ps1).
+The command downloads the latest release into `~/Nodus` (Windows: `%USERPROFILE%\Nodus`). **If Python 3.12 is missing, it installs a portable copy inside that folder, without admin rights** (via [uv](https://github.com/astral-sh/uv); the SHA-256 of the download is verified), installs the libraries and starts Nodus. On first launch a **key dialog** appears: paste a free [Gemini key](https://aistudio.google.com/apikey), it is validated and saved, so you never have to edit `.env` by hand. On Windows a **Nodus shortcut is added to your Desktop**, so next time just double-click it (or `run_nodus.bat` in that folder); on macOS/Linux `bash run_nodus.sh` in that folder is enough. If you prefer to read the scripts first: [`install.sh`](install.sh), [`install.ps1`](install.ps1).
 
 ### Getting your free key (about 1 minute)
 
