@@ -22,3 +22,4 @@ memory/usage.json
 .venv/
 .update_backup/
 .nodus_tools/
+memory/.desktop_shortcut*

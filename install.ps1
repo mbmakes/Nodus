@@ -55,6 +55,7 @@ try {
         $sc = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
         $sc.TargetPath = Join-Path $dest 'run_nodus.bat'
         $sc.WorkingDirectory = $dest
+        $sc.IconLocation = Join-Path $dest 'assets\Nodus.ico'
         $sc.WindowStyle = 7
         $sc.Description = 'Nodus'
         $sc.Save()

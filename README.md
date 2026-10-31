@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Windows | macOS | Linux">
 </p>
 
-> **Status: v1.13.1-beta.** Close to daily use, but not widely tested yet. See [Limits](#limits-and-beta-notes) for what to keep in mind.
+> **Status: v1.13.2-beta.** Close to daily use, but not widely tested yet. See [Limits](#limits-and-beta-notes) for what to keep in mind.
 > The interface and the agent's default replies are in **Turkish** for now; an English interface is on the [roadmap](#roadmap). The agent understands English tasks.
 
 ![Calculation sheet: step log, equations and tables](docs/img/hesap-foyu.png)

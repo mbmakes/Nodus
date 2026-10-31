@@ -1048,15 +1048,19 @@ def _open_when_ready(url: str, port: int, timeout: float = 90.0):
 def _ensure_desktop_shortcut():
     """Windows: masaustunde Nodus kisayolu yoksa bir kez olusturur (eski surumden guncelleyenler de alsin).
     Isaret dosyasi sayesinde kullanici kisayolu silerse tekrar olusturulmaz."""
-    marker = os.path.join(MEM_DIR, ".desktop_shortcut")
+    marker = os.path.join(MEM_DIR, ".desktop_shortcut_v2")   # v2: 1.13.1'in logosuz kisayolu bir kez duzeltilsin
     if os.name != "nt" or os.getenv("NODUS_NO_WINDOW") or os.path.exists(marker):
         return
-    ps = ("$l=Join-Path ([Environment]::GetFolderPath('Desktop')) 'Nodus.lnk'; if(-not(Test-Path $l)){"
-          "$s=(New-Object -ComObject WScript.Shell).CreateShortcut($l);$s.TargetPath=$env:NODUS_BAT;"
-          "$s.WorkingDirectory=$env:NODUS_DIR;$s.WindowStyle=7;$s.Description='Nodus';$s.Save()}")
+    # Kisayol yoksa olusturur; varsa yalnizca bizim yaptigimiz (Description 'Nodus') logosuz olana ikon ekler
+    ps = ("$l=Join-Path ([Environment]::GetFolderPath('Desktop')) 'Nodus.lnk';$w=New-Object -ComObject WScript.Shell;"
+          "if(-not(Test-Path $l)){$s=$w.CreateShortcut($l);$s.TargetPath=$env:NODUS_BAT;$s.WorkingDirectory=$env:NODUS_DIR;"
+          "$s.IconLocation=$env:NODUS_ICO;$s.WindowStyle=7;$s.Description='Nodus';$s.Save()}"
+          "else{$s=$w.CreateShortcut($l);if($s.Description -eq 'Nodus' -and $s.IconLocation -notlike '*Nodus.ico*')"
+          "{$s.IconLocation=$env:NODUS_ICO;$s.Save()}}")
     try:
         subprocess.run(["powershell", "-NoProfile", "-Command", ps], timeout=20, check=True, capture_output=True,
-                       env=dict(os.environ, NODUS_BAT=os.path.join(BASE_DIR, "run_nodus.bat"), NODUS_DIR=BASE_DIR))
+                       env=dict(os.environ, NODUS_BAT=os.path.join(BASE_DIR, "run_nodus.bat"), NODUS_DIR=BASE_DIR,
+                                NODUS_ICO=os.path.join(BASE_DIR, "assets", "Nodus.ico")))
         os.makedirs(MEM_DIR, exist_ok=True)
         open(marker, "w").close()
     except Exception:
